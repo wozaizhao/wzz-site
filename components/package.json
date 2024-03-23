@@ -1,6 +1,6 @@
 {
-  "name": "tdesign-site-components",
-  "version": "0.13.6",
+  "name": "wzz-site-components",
+  "version": "0.1.0",
   "main": "lib/site.es.js",
   "scripts": {
     "dev": "vite",
@@ -12,9 +12,8 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
-  "homepage": "https://github.com/TDesignOteam/tdesign-site/blob/main/components/README.md",
+  "homepage": "https://github.com/wozaizhao",
   "keywords": [
-    "TDesign",
     "webcomponents"
   ],
   "files": [
