@@ -331,9 +331,6 @@ export default define({
                   </td-collapse-menu>
                 `
               : html`
-                  <div class="slot-search">
-                    <slot name="search"></slot>
-                  </div>
                   ${renderLinks(host, headerList, platform, framework)}
                   ${disabledTheme
                     ? html``
