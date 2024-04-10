@@ -5,7 +5,6 @@ import './components/td-header/td-collapse-menu/index.js';
 import './components/td-logo/index.js';
 import './components/td-backtop/index.js';
 import './components/td-avatar/index.js';
-import './components/td-contributors/index.js';
 import './components/td-tooltip/index.js';
 import './components/td-theme-tabs/index.js';
 import './components/td-doc-layout/index.js';

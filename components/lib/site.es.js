@@ -1,29 +1,4 @@
 var main$1 = "";
-function polyfill(global2) {
-  global2 = Object.create(global2);
-  if (!("HTMLElement" in global2)) {
-    Object.defineProperty(global2, "HTMLElement", {
-      value: class HTMLElement {
-        constructor() {
-          throw Error(
-            "Current context does not support defining custom elements"
-          );
-        }
-      }
-    });
-  }
-  if (!("document" in global2)) {
-    Object.defineProperty(global2, "document", {
-      value: {
-        importNode: () => {
-          throw Error("Current context does not support importing nodes");
-        }
-      }
-    });
-  }
-  return global2;
-}
-var global$1 = typeof window === "object" ? window : polyfill(globalThis);
 const camelToDashMap = /* @__PURE__ */ new Map();
 function camelToDash(str) {
   let result = camelToDashMap.get(str);
@@ -35,22 +10,22 @@ function camelToDash(str) {
 }
 function dispatch$1(host, eventType, options = {}) {
   return host.dispatchEvent(
-    new global$1.CustomEvent(eventType, { bubbles: false, ...options })
+    new globalThis.CustomEvent(eventType, { bubbles: false, ...options })
   );
 }
 function stringifyElement(target) {
   return `<${String(target.tagName).toLowerCase()}>`;
 }
 function walkInShadow(target, cb) {
-  if (target.nodeType === global$1.Node.ELEMENT_NODE) {
+  if (target.nodeType === globalThis.Node.ELEMENT_NODE) {
     cb(target);
     if (target.shadowRoot) {
       walkInShadow(target.shadowRoot, cb);
     }
   }
-  const walker = global$1.document.createTreeWalker(
+  const walker = globalThis.document.createTreeWalker(
     target,
-    global$1.NodeFilter.SHOW_ELEMENT,
+    globalThis.NodeFilter.SHOW_ELEMENT,
     null,
     false
   );
@@ -87,28 +62,21 @@ function execute() {
 const entries = /* @__PURE__ */ new WeakMap();
 const stack = /* @__PURE__ */ new Set();
 function dispatch(entry) {
-  const contexts = /* @__PURE__ */ new Set();
-  const iterator = contexts.values();
+  const contexts = [];
+  let index = 0;
   while (entry) {
     entry.resolved = false;
-    if (entry.deps) {
-      for (const depEntry of entry.deps) {
-        depEntry.contexts.delete(entry);
-      }
-      entry.deps.clear();
-    }
     if (entry.contexts) {
       for (const context2 of entry.contexts) {
-        if (!stack.has(context2)) {
-          contexts.add(context2);
-          entry.contexts.delete(context2);
+        if (!stack.has(context2) && !contexts.includes(context2)) {
+          contexts.push(context2);
         }
       }
     }
     if (entry.observe) {
       add(entry.observe);
     }
-    entry = iterator.next().value;
+    entry = contexts[index++];
   }
 }
 function getEntry(target, key2) {
@@ -146,6 +114,12 @@ function get$1(target, key2, getter) {
   }
   if (entry.resolved)
     return entry.value;
+  if (entry.deps) {
+    for (const depEntry of entry.deps) {
+      depEntry.contexts.delete(entry);
+    }
+    entry.deps.clear();
+  }
   const lastContext = context;
   try {
     if (stack.has(entry)) {
@@ -185,7 +159,11 @@ function observe(target, key2, getter, fn2) {
       entry.lastValue = value2;
     }
   };
-  add(entry.observe);
+  try {
+    entry.observe();
+  } catch (e) {
+    console.error(e);
+  }
   return () => {
     clear(entry.observe);
     entry.observe = void 0;
@@ -198,11 +176,6 @@ function deleteEntry(entry) {
     setTimeout(() => {
       for (const e of gc) {
         if (!e.contexts || e.contexts.size === 0) {
-          if (e.deps) {
-            for (const depEntry of e.deps) {
-              depEntry.contexts.delete(e);
-            }
-          }
           const targetMap = entries.get(e.target);
           targetMap.delete(e.key);
         }
@@ -219,6 +192,18 @@ function invalidateEntry(entry, options) {
     entry.lastValue = void 0;
   }
   if (options.deleteEntry) {
+    if (entry.deps) {
+      for (const depEntry of entry.deps) {
+        depEntry.contexts.delete(entry);
+      }
+      entry.deps = void 0;
+    }
+    if (entry.contexts) {
+      for (const context2 of entry.contexts) {
+        context2.deps.delete(entry);
+      }
+      entry.contexts = void 0;
+    }
     deleteEntry(entry);
   }
 }
@@ -258,107 +243,87 @@ function render(fn2, useShadow) {
     }
   };
 }
-function string(desc, attrName) {
-  const defaultValue = desc.value;
-  return {
-    get: (host, value2) => value2 === void 0 ? host.getAttribute(attrName) || defaultValue : value2,
-    set: (host, value2) => {
-      value2 = String(value2);
-      if (value2) {
-        host.setAttribute(attrName, value2);
-      } else {
-        host.removeAttribute(attrName);
-      }
-      return value2;
-    },
-    connect: defaultValue !== "" ? (host, key2, invalidate2) => {
-      if (!host.hasAttribute(attrName) && host[key2] === defaultValue) {
-        host.setAttribute(attrName, defaultValue);
-      }
-      return desc.connect && desc.connect(host, key2, invalidate2);
-    } : desc.connect,
-    observe: desc.observe
-  };
-}
-function number(desc, attrName) {
-  const defaultValue = desc.value;
-  return {
-    get: (host, value2) => value2 === void 0 ? Number(host.getAttribute(attrName) || defaultValue) : value2,
-    set: (host, value2) => {
-      value2 = Number(value2);
-      host.setAttribute(attrName, value2);
-      return value2;
-    },
-    connect: (host, key2, invalidate2) => {
-      if (!host.hasAttribute(attrName) && host[key2] === defaultValue) {
-        host.setAttribute(attrName, defaultValue);
-      }
-      return desc.connect && desc.connect(host, key2, invalidate2);
-    },
-    observe: desc.observe
-  };
-}
-function boolean(desc, attrName) {
-  const defaultValue = desc.value;
-  return {
-    get: (host, value2) => value2 === void 0 ? host.hasAttribute(attrName) || defaultValue : value2,
-    set: (host, value2) => {
-      value2 = Boolean(value2);
-      if (value2) {
-        host.setAttribute(attrName, "");
-      } else {
-        host.removeAttribute(attrName);
-      }
-      return value2;
-    },
-    connect: defaultValue === true ? (host, key2, invalidate2) => {
-      if (!host.hasAttribute(attrName) && host[key2] === defaultValue) {
-        host.setAttribute(attrName, "");
-      }
-      return desc.connect && desc.connect(host, key2, invalidate2);
-    } : desc.connect,
-    observe: desc.observe
-  };
-}
-function undef(desc, attrName) {
-  const defaultValue = desc.value;
-  return {
-    get: (host, value2) => value2 === void 0 ? host.getAttribute(attrName) || defaultValue : value2,
-    set: (host, value2) => value2,
-    connect: desc.connect,
-    observe: desc.observe
-  };
-}
+const setters = {
+  string: (host, value2, attrName) => {
+    const nextValue = value2 ? String(value2) : "";
+    if (nextValue) {
+      host.setAttribute(attrName, nextValue);
+    } else {
+      host.removeAttribute(attrName);
+    }
+    return nextValue;
+  },
+  number: (host, value2, attrName) => {
+    const nextValue = Number(value2);
+    host.setAttribute(attrName, nextValue);
+    return nextValue;
+  },
+  boolean: (host, value2, attrName) => {
+    const nextValue = Boolean(value2);
+    if (nextValue) {
+      host.setAttribute(attrName, "");
+    } else {
+      host.removeAttribute(attrName);
+    }
+    return nextValue;
+  },
+  undefined: (host, value2, attrName) => {
+    const type = typeof value2;
+    const set2 = type !== "undefined" && setters[type];
+    if (set2) {
+      return set2(host, value2, attrName);
+    } else if (host.hasAttribute(attrName)) {
+      host.removeAttribute(attrName);
+    }
+    return value2;
+  }
+};
+const getters = {
+  string: (host, attrName) => host.getAttribute(attrName),
+  number: (host, attrName) => Number(host.getAttribute(attrName)) || 0,
+  boolean: (host, attrName) => host.hasAttribute(attrName),
+  undefined: (host, attrName) => host.getAttribute(attrName)
+};
 function value(key2, desc) {
   const type = typeof desc.value;
-  const attrName = camelToDash(key2);
-  switch (type) {
-    case "string":
-      return string(desc, attrName);
-    case "number":
-      return number(desc, attrName);
-    case "boolean":
-      return boolean(desc, attrName);
-    case "undefined":
-      return undef(desc, attrName);
-    default:
-      throw TypeError(
-        `Invalid default value for '${key2}' property - it must be a string, number, boolean or undefined: ${type}`
-      );
+  const set2 = setters[type];
+  const get2 = getters[type];
+  if (!set2) {
+    throw TypeError(
+      `Invalid default value for '${key2}' property - it must be a string, number, boolean or undefined: ${type}`
+    );
   }
+  const attrName = camelToDash(key2);
+  return {
+    get: (host, value2) => value2 === void 0 ? get2(host, attrName) || desc.value : value2,
+    set: (host, value2) => set2(host, value2, attrName),
+    connect: type !== "undefined" ? (host, key3, invalidate2) => {
+      if (!host.hasAttribute(attrName) && host[key3] === desc.value) {
+        host[key3] = set2(host, desc.value, attrName);
+      }
+      return desc.connect && desc.connect(host, key3, invalidate2);
+    } : desc.connect,
+    observe: desc.observe
+  };
 }
+const constructors = /* @__PURE__ */ new WeakMap();
 const disconnects = /* @__PURE__ */ new WeakMap();
 function compile$1(hybrids, HybridsElement) {
   if (HybridsElement) {
-    if (hybrids === HybridsElement.hybrids)
+    const prevHybrids = constructors.get(HybridsElement);
+    if (hybrids === prevHybrids)
       return HybridsElement;
-    for (const key2 of Object.keys(HybridsElement.hybrids)) {
+    for (const key2 of Object.keys(prevHybrids)) {
+      if (key2 === "tag")
+        continue;
       delete HybridsElement.prototype[key2];
     }
   } else {
-    HybridsElement = class extends global$1.HTMLElement {
+    HybridsElement = class extends globalThis.HTMLElement {
       connectedCallback() {
-        for (const key2 of Object.keys(this)) {
+        for (const key2 of HybridsElement.settable) {
+          if (!hasOwnProperty.call(this, key2))
+            continue;
           const value2 = this[key2];
           delete this[key2];
           this[key2] = value2;
@@ -367,9 +332,9 @@ function compile$1(hybrids, HybridsElement) {
         disconnects.set(this, set2);
         add(() => {
           if (set2 === disconnects.get(this)) {
-            for (const fn2 of this.constructor.connects)
+            for (const fn2 of HybridsElement.connects)
               set2.add(fn2(this));
-            for (const fn2 of this.constructor.observers)
+            for (const fn2 of HybridsElement.observers)
               set2.add(fn2(this));
           }
         });
@@ -385,9 +350,10 @@ function compile$1(hybrids, HybridsElement) {
       }
     };
   }
-  HybridsElement.hybrids = hybrids;
+  constructors.set(HybridsElement, Object.freeze(hybrids));
   const connects = /* @__PURE__ */ new Set();
   const observers = /* @__PURE__ */ new Set();
+  const settable = /* @__PURE__ */ new Set();
   for (const key2 of Object.keys(hybrids)) {
     if (key2 === "tag")
       continue;
@@ -425,6 +391,8 @@ function compile$1(hybrids, HybridsElement) {
         `Invalid descriptor for '${key2}' property - it must contain 'value' or 'get' option`
       );
     }
+    if (desc.set)
+      settable.add(key2);
     Object.defineProperty(HybridsElement.prototype, key2, {
       get: function get2() {
         return get$1(this, key2, desc.get);
@@ -448,20 +416,23 @@ function compile$1(hybrids, HybridsElement) {
   }
   HybridsElement.connects = connects;
   HybridsElement.observers = observers;
+  HybridsElement.settable = settable;
   return HybridsElement;
 }
 const updateQueue = /* @__PURE__ */ new Map();
 function update(HybridsElement) {
   if (!updateQueue.size) {
     deferred.then(() => {
-      walkInShadow(global$1.document.body, (node) => {
+      walkInShadow(globalThis.document.body, (node) => {
         if (updateQueue.has(node.constructor)) {
           const prevHybrids = updateQueue.get(node.constructor);
-          const hybrids = node.constructor.hybrids;
+          const hybrids = constructors.get(node.constructor);
           node.disconnectedCallback();
           for (const key2 of Object.keys(hybrids)) {
             const type = typeof hybrids[key2];
             const clearValue = type !== "object" && type !== "function" && hybrids[key2] !== prevHybrids[key2];
+            if (clearValue)
+              node.removeAttribute(camelToDash(key2));
             invalidate(node, key2, { clearValue });
           }
           node.connectedCallback();
@@ -470,7 +441,7 @@ function update(HybridsElement) {
       updateQueue.clear();
     });
   }
-  updateQueue.set(HybridsElement, HybridsElement.hybrids);
+  updateQueue.set(HybridsElement, constructors.get(HybridsElement));
 }
 function define$1(hybrids) {
   if (!hybrids.tag) {
@@ -478,26 +449,22 @@ function define$1(hybrids) {
       "Error while defining hybrids: 'tag' property with dashed tag name is required"
     );
   }
-  const HybridsElement = global$1.customElements.get(hybrids.tag);
+  const HybridsElement = globalThis.customElements.get(hybrids.tag);
   if (HybridsElement) {
-    if (HybridsElement.hybrids) {
+    if (constructors.get(HybridsElement)) {
       update(HybridsElement);
       compile$1(hybrids, HybridsElement);
-      return Object.freeze(hybrids);
+      return hybrids;
     }
     throw TypeError(
       `Custom element with '${hybrids.tag}' tag name already defined outside of the hybrids context`
     );
   }
-  global$1.customElements.define(hybrids.tag, compile$1(hybrids));
-  return Object.freeze(hybrids);
+  globalThis.customElements.define(hybrids.tag, compile$1(hybrids));
+  return hybrids;
 }
-function from(components, options = {}) {
-  const { root = "", prefix } = options;
-  const keys = Object.keys(components);
-  if (keys.length === 0)
-    return components;
-  for (const key2 of keys) {
+function from(components, { root = "", prefix } = {}) {
+  for (const key2 of Object.keys(components)) {
     const hybrids = components[key2];
     if (!hybrids.tag) {
       const tag = camelToDash(
@@ -531,11 +498,9 @@ function getTemplateEnd(node) {
   return node;
 }
 function removeTemplate(target) {
-  const data = getMeta(target);
-  if (data.styles)
-    data.styles();
-  if (target.nodeType === global$1.Node.TEXT_NODE) {
-    if (data.startNode) {
+  if (target.nodeType === globalThis.Node.TEXT_NODE) {
+    const data = metaMap.get(target);
+    if (data && data.startNode) {
       const endNode = getTemplateEnd(data.endNode);
       let node = data.startNode;
       const lastNextSibling = endNode.nextSibling;
@@ -544,6 +509,7 @@ function removeTemplate(target) {
         node.parentNode.removeChild(node);
         node = nextSibling !== lastNextSibling && nextSibling;
       }
+      metaMap.set(target, {});
     }
   } else {
     let child = target.childNodes[0];
@@ -551,12 +517,12 @@ function removeTemplate(target) {
       target.removeChild(child);
       child = target.childNodes[0];
     }
+    metaMap.set(target, {});
   }
-  metaMap.delete(target);
 }
 const TIMESTAMP = Date.now();
 const getPlaceholder = (id = 0) => `H-${TIMESTAMP}-${id}`;
-const hasAdoptedStylesheets = !!global$1.document.adoptedStyleSheets;
+const hasAdoptedStylesheets = !!(globalThis.document && globalThis.document.adoptedStyleSheets);
 const NUMBER_REGEXP = /^\d+$/;
 const rules = {
   block: (props, align) => ({
@@ -676,7 +642,18 @@ const rules = {
   bottom: (props, value2 = 0) => ({ bottom: dimension(value2) }),
   left: (props, value2 = 0) => ({ left: dimension(value2) }),
   right: (props, value2 = 0) => ({ right: dimension(value2) }),
-  layer: (props, value2 = 1) => ({ "z-index": value2 })
+  layer: (props, value2 = 1) => ({ "z-index": value2 }),
+  "": (props, _, ...args) => {
+    if (args.length < 2) {
+      throw new Error(
+        "Generic rule '::' requires at least two arguments, eg.: ::[property]:[name]"
+      );
+    }
+    return {
+      [args[args.length - 2]]: `var(--${args.join("-")})`
+    };
+  },
+  view: (props, value2) => ({ "view-transition-name": value2 })
 };
 const dimensions = {
   min: "min-content",
@@ -700,11 +677,11 @@ function getCSSStyleSheet() {
   if (globalSheet)
     return globalSheet;
   if (hasAdoptedStylesheets) {
-    globalSheet = new global$1.CSSStyleSheet();
+    globalSheet = new globalThis.CSSStyleSheet();
   } else {
-    const el = global$1.document.createElement("style");
-    el.appendChild(global$1.document.createTextNode(""));
-    global$1.document.head.appendChild(el);
+    const el = globalThis.document.createElement("style");
+    el.appendChild(globalThis.document.createTextNode(""));
+    globalThis.document.head.appendChild(el);
     globalSheet = el.sheet;
   }
   globalSheet.insertRule(":host([hidden]) { display: none; }");
@@ -720,11 +697,11 @@ function inject(target) {
   if (hasAdoptedStylesheets) {
     root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
   } else {
-    if (root === global$1.document)
+    if (root === globalThis.document)
       return;
     let el = styleElements.get(root);
     if (!el) {
-      el = global$1.document.createElement("style");
+      el = globalThis.document.createElement("style");
       root.appendChild(el);
       styleElements.set(root, el);
     }
@@ -769,19 +746,19 @@ function insertRule(node, query, tokens, hostMode) {
     return acc + ` and (${queries[query2] || `min-width: ${query2}`})`;
   }, "@media screen");
   if (hostMode) {
-    const shadowSelector = `:host(.${className}-s${selectors})`;
+    const shadowSelector = `:host(:where(.${className}-s${selectors}))`;
     const contentSelector = `:where(.${className}-c${selectors})`;
     [shadowSelector, contentSelector].forEach((selector) => {
       sheet.insertRule(
         mediaQueries ? `${mediaSelector} { ${selector} { ${cssRules} } }` : `${selector} { ${cssRules} }`,
-        sheet.cssRules.length
+        sheet.cssRules.length - 1
       );
     });
   } else {
     const selector = `.${className}${selectors}`;
     sheet.insertRule(
       mediaQueries ? `${mediaSelector} { ${selector} { ${cssRules} } }` : `${selector} { ${cssRules} }`,
-      sheet.cssRules.length
+      sheet.cssRules.length - 1
     );
   }
   return className;
@@ -854,7 +831,7 @@ function resolveArray(host, target, value2, resolveValue2, useLayout) {
         );
       }
     } else {
-      entry.placeholder = global$1.document.createTextNode("");
+      entry.placeholder = globalThis.document.createTextNode("");
       previousSibling.parentNode.insertBefore(
         entry.placeholder,
         previousSibling.nextSibling
@@ -889,7 +866,7 @@ function typeOf(value2) {
   if (type === "object") {
     if (Array.isArray(value2))
       return "array";
-    if (value2 instanceof global$1.Node)
+    if (value2 instanceof globalThis.Node)
       return "node";
   }
   return type;
@@ -927,13 +904,11 @@ function resolveEventListener(eventType) {
   return (host, target, value2, lastValue) => {
     if (lastValue) {
       const eventMap = targets.get(target);
-      if (eventMap) {
-        target.removeEventListener(
-          eventType,
-          eventMap.get(lastValue),
-          lastValue.options !== void 0 ? lastValue.options : false
-        );
-      }
+      target.removeEventListener(
+        eventType,
+        eventMap.get(lastValue),
+        lastValue.options !== void 0 ? lastValue.options : false
+      );
     }
     if (value2) {
       if (typeof value2 !== "function") {
@@ -954,20 +929,27 @@ function resolveEventListener(eventType) {
     }
   };
 }
-function normalizeValue(value2, set2 = /* @__PURE__ */ new Set()) {
-  if (Array.isArray(value2)) {
-    for (const className of value2) {
+function addClassNames(set2, value2) {
+  if (value2) {
+    for (const className of String(value2).split(/\s+/)) {
       if (className)
         set2.add(className);
     }
+  }
+}
+function normalizeValue(value2) {
+  const set2 = /* @__PURE__ */ new Set();
+  if (Array.isArray(value2)) {
+    for (const v of value2) {
+      addClassNames(set2, v);
+    }
   } else if (value2 !== null && typeof value2 === "object") {
-    for (const [className, condition] of Object.entries(value2)) {
-      if (className && condition)
-        set2.add(className);
+    for (const [v, condition] of Object.entries(value2)) {
+      if (v && condition)
+        addClassNames(set2, v);
     }
   } else {
-    if (value2)
-      set2.add(value2);
+    addClassNames(set2, value2);
   }
   return set2;
 }
@@ -1023,7 +1005,7 @@ function resolveProperty(attrName, propertyName, isSVG) {
     default: {
       let isProp = false;
       return (host, target, value2) => {
-        isProp = isProp || !isSVG && !(target instanceof global$1.SVGElement) && propertyName in target;
+        isProp = isProp || !isSVG && !(target instanceof globalThis.SVGElement) && propertyName in target;
         if (isProp) {
           target[propertyName] = value2;
         } else if (value2 === false || value2 === void 0 || value2 === null) {
@@ -1044,21 +1026,23 @@ function createSignature(parts) {
   let signature = parts[0];
   let tableMode = false;
   for (let index = 1; index < parts.length; index += 1) {
-    tableMode = tableMode || parts[index - 1].match(
-      /<\s*(table|tr|thead|tbody|tfoot|colgroup)([^<>]|"[^"]*"|'[^']*')*>\s*$/
+    tableMode = tableMode || signature.match(
+      /<\s*(table|th|tr|td|thead|tbody|tfoot|caption|colgroup)([^<>]|"[^"]*"|'[^']*')*>\s*$/
     );
     signature += (tableMode ? `<!--${getPlaceholder(index - 1)}-->` : getPlaceholder(index - 1)) + parts[index];
-    tableMode = tableMode && !parts[index].match(/<\/\s*(table|tr|thead|tbody|tfoot|colgroup)\s*>/);
+    tableMode = tableMode && !signature.match(
+      /<\/\s*(table|th|tr|td|thead|tbody|tfoot|caption|colgroup)\s*>/
+    );
   }
   return signature;
 }
-function getPropertyName(string2) {
-  return string2.replace(/\s*=\s*['"]*$/g, "").split(/\s+/).pop();
+function getPropertyName(string) {
+  return string.replace(/\s*=\s*['"]*$/g, "").split(/\s+/).pop();
 }
 function createWalker(context2) {
-  return global$1.document.createTreeWalker(
+  return globalThis.document.createTreeWalker(
     context2,
-    global$1.NodeFilter.SHOW_ELEMENT | global$1.NodeFilter.SHOW_TEXT | global$1.NodeFilter.SHOW_COMMENT,
+    globalThis.NodeFilter.SHOW_ELEMENT | globalThis.NodeFilter.SHOW_TEXT | globalThis.NodeFilter.SHOW_COMMENT,
     null,
     false
   );
@@ -1091,61 +1075,72 @@ function beautifyTemplateLog(input, index) {
   return `${output}`;
 }
 const styleSheetsMap = /* @__PURE__ */ new Map();
-function setupStyleUpdater(target) {
-  if (target.adoptedStyleSheets) {
-    let prevStyleSheets;
-    return (styleSheets) => {
-      const adoptedStyleSheets = target.adoptedStyleSheets;
-      if (styleSheets) {
-        styleSheets = styleSheets.map((style2) => {
-          let styleSheet = style2;
-          if (!(styleSheet instanceof global$1.CSSStyleSheet)) {
-            styleSheet = styleSheetsMap.get(style2);
-            if (!styleSheet) {
-              styleSheet = new global$1.CSSStyleSheet();
-              styleSheet.replaceSync(style2);
-              styleSheetsMap.set(style2, styleSheet);
-            }
-          }
-          return styleSheet;
-        });
-        if (!prevStyleSheets || prevStyleSheets.some((styleSheet, i) => styleSheet !== styleSheets[i])) {
-          target.adoptedStyleSheets = (prevStyleSheets ? adoptedStyleSheets.filter(
-            (styleSheet) => !prevStyleSheets.includes(styleSheet)
-          ) : adoptedStyleSheets).concat(styleSheets);
-        }
-      } else if (prevStyleSheets) {
-        target.adoptedStyleSheets = adoptedStyleSheets.filter(
-          (styleSheet) => !prevStyleSheets.includes(styleSheet)
-        );
+const prevStyleSheetsMap = /* @__PURE__ */ new WeakMap();
+function updateAdoptedStylesheets(target, styles) {
+  const prevStyleSheets = prevStyleSheetsMap.get(target);
+  if (!prevStyleSheets && !styles)
+    return;
+  const styleSheets = styles && styles.map((style2) => {
+    let styleSheet = style2;
+    if (!(styleSheet instanceof globalThis.CSSStyleSheet)) {
+      styleSheet = styleSheetsMap.get(style2);
+      if (!styleSheet) {
+        styleSheet = new globalThis.CSSStyleSheet();
+        styleSheet.replaceSync(style2);
+        styleSheetsMap.set(style2, styleSheet);
       }
-      prevStyleSheets = styleSheets;
-    };
-  }
-  let styleEl;
-  return (styleSheets) => {
-    if (styleSheets) {
-      if (!styleEl) {
-        styleEl = global$1.document.createElement("style");
-        target = getTemplateEnd(target);
-        if (target.nodeType === global$1.Node.TEXT_NODE) {
-          target.parentNode.insertBefore(styleEl, target.nextSibling);
-        } else {
-          target.appendChild(styleEl);
-        }
-      }
-      const result = [...styleSheets].join("\n/*------*/\n");
-      if (styleEl.textContent !== result) {
-        styleEl.textContent = result;
-      }
-    } else if (styleEl) {
-      styleEl.parentNode.removeChild(styleEl);
-      styleEl = null;
     }
-  };
+    return styleSheet;
+  });
+  let adoptedStyleSheets;
+  if (prevStyleSheets) {
+    if (styleSheets && styleSheets.length === prevStyleSheets.length && styleSheets.every((s, i) => s === prevStyleSheets[i])) {
+      return;
+    }
+    adoptedStyleSheets = target.adoptedStyleSheets.filter(
+      (s) => !prevStyleSheets.includes(s)
+    );
+  }
+  if (styleSheets) {
+    adoptedStyleSheets = (adoptedStyleSheets || target.adoptedStyleSheets).concat(styleSheets);
+  }
+  target.adoptedStyleSheets = adoptedStyleSheets;
+  prevStyleSheetsMap.set(target, styleSheets);
+}
+const styleElementMap = /* @__PURE__ */ new WeakMap();
+function updateStyleElement(target, styles) {
+  let styleEl = styleElementMap.get(target);
+  if (styles) {
+    if (!styleEl || styleEl.parentNode !== target) {
+      styleEl = globalThis.document.createElement("style");
+      styleElementMap.set(target, styleEl);
+      target = getTemplateEnd(target);
+      if (target.nodeType === globalThis.Node.TEXT_NODE) {
+        target.parentNode.insertBefore(styleEl, target.nextSibling);
+      } else {
+        target.appendChild(styleEl);
+      }
+    }
+    const result = [...styles].join("\n/*------*/\n");
+    if (styleEl.textContent !== result) {
+      styleEl.textContent = result;
+    }
+  } else if (styleEl) {
+    styleEl.parentNode.removeChild(styleEl);
+    styleElementMap.set(target, null);
+  }
+}
+const updateStyleFns = /* @__PURE__ */ new WeakMap();
+function updateStyles(target, styles) {
+  let fn2 = updateStyleFns.get(target);
+  if (!fn2) {
+    fn2 = target.adoptedStyleSheets ? updateAdoptedStylesheets : updateStyleElement;
+    updateStyleFns.set(target, fn2);
+  }
+  fn2(target, styles);
 }
 function compileTemplate(rawParts, isSVG, isMsg, useLayout) {
-  let template = global$1.document.createElement("template");
+  let template = globalThis.document.createElement("template");
   const parts = {};
   const signature = isMsg ? rawParts : createSignature(rawParts);
   template.innerHTML = isSVG ? `<svg>${signature}</svg>` : signature;
@@ -1158,10 +1153,10 @@ function compileTemplate(rawParts, isSVG, isMsg, useLayout) {
   }
   let hostLayout;
   const layoutTemplate = template.content.children[0];
-  if (layoutTemplate instanceof global$1.HTMLTemplateElement) {
+  if (layoutTemplate instanceof globalThis.HTMLTemplateElement) {
     for (const attr of Array.from(layoutTemplate.attributes)) {
       const value2 = attr.value.trim();
-      if (attr.name.startsWith("layout") && value2) {
+      if (value2 && attr.name.startsWith("layout")) {
         if (value2.match(PLACEHOLDER_REGEXP_ALL)) {
           throw Error("Layout attribute cannot contain expressions");
         }
@@ -1178,7 +1173,7 @@ function compileTemplate(rawParts, isSVG, isMsg, useLayout) {
         "Template, which uses layout system must have only the '<template>' root element"
       );
     }
-    useLayout = true;
+    useLayout = hostLayout || layoutTemplate.hasAttribute("layout");
     template = layoutTemplate;
   }
   const compileWalker = createWalker(template.content);
@@ -1190,10 +1185,10 @@ function compileTemplate(rawParts, isSVG, isMsg, useLayout) {
     if (noTranslate && !noTranslate.contains(node)) {
       noTranslate = null;
     }
-    if (node.nodeType === global$1.Node.COMMENT_NODE) {
+    if (node.nodeType === globalThis.Node.COMMENT_NODE) {
       if (PLACEHOLDER_REGEXP_EQUAL.test(node.textContent)) {
         node.parentNode.insertBefore(
-          global$1.document.createTextNode(node.textContent),
+          globalThis.document.createTextNode(node.textContent),
           node.nextSibling
         );
         compileWalker.nextNode();
@@ -1201,7 +1196,7 @@ function compileTemplate(rawParts, isSVG, isMsg, useLayout) {
         node = compileWalker.currentNode;
       }
     }
-    if (node.nodeType === global$1.Node.TEXT_NODE) {
+    if (node.nodeType === globalThis.Node.TEXT_NODE) {
       let text = node.textContent;
       const equal = text.match(PLACEHOLDER_REGEXP_EQUAL);
       if (equal) {
@@ -1218,7 +1213,7 @@ function compileTemplate(rawParts, isSVG, isMsg, useLayout) {
             return `\${${index - offset2}}`;
           });
           if (!localizedKey.match(PLACEHOLDER_REGEXP_ONLY)) {
-            let context2 = node.previousSibling && node.previousSibling.nodeType === global$1.Node.COMMENT_NODE ? node.previousSibling : "";
+            let context2 = node.previousSibling && node.previousSibling.nodeType === globalThis.Node.COMMENT_NODE ? node.previousSibling : "";
             if (context2) {
               context2.parentNode.removeChild(context2);
               compileIndex -= 1;
@@ -1251,7 +1246,7 @@ function compileTemplate(rawParts, isSVG, isMsg, useLayout) {
               currentNode.textContent = part;
             } else {
               currentNode = currentNode.parentNode.insertBefore(
-                global$1.document.createTextNode(part),
+                globalThis.document.createTextNode(part),
                 currentNode.nextSibling
               );
               compileWalker.currentNode = currentNode;
@@ -1268,13 +1263,13 @@ function compileTemplate(rawParts, isSVG, isMsg, useLayout) {
         }
       }
     } else {
-      if (node.nodeType === global$1.Node.ELEMENT_NODE) {
+      if (node.nodeType === globalThis.Node.ELEMENT_NODE) {
         if (!noTranslate && (node.getAttribute("translate") === "no" || node.tagName.toLowerCase() === "script" || node.tagName.toLowerCase() === "style")) {
           noTranslate = node;
         }
         if (probablyDevMode) {
           const tagName = node.tagName.toLowerCase();
-          if (tagName.match(/.+-.+/) && !global$1.customElements.get(tagName) && !notDefinedElements.includes(tagName)) {
+          if (tagName.match(/.+-.+/) && !globalThis.customElements.get(tagName) && !notDefinedElements.includes(tagName)) {
             notDefinedElements.push(tagName);
           }
         }
@@ -1314,7 +1309,7 @@ function compileTemplate(rawParts, isSVG, isMsg, useLayout) {
                       attrValue == null ? "" : attrValue
                     );
                     if (results.length === 1 || index + 1 === results.length) {
-                      isProp = isProp || !isSVG && !(target instanceof global$1.SVGElement) && name in target;
+                      isProp = isProp || !isSVG && !(target instanceof globalThis.SVGElement) && name in target;
                       if (isProp) {
                         target[name] = meta[partialName];
                       } else {
@@ -1340,10 +1335,10 @@ ${beautifyTemplateLog(signature, -1)}`
     );
   }
   const partsKeys = Object.keys(parts);
-  return function updateTemplateInstance(host, target, args, styles) {
+  return function updateTemplateInstance(host, target, args, { styleSheets }) {
     let meta = getMeta(target);
     if (template !== meta.template) {
-      const fragment = global$1.document.importNode(template.content, true);
+      const fragment = globalThis.document.importNode(template.content, true);
       const renderWalker = createWalker(fragment);
       const markers = [];
       let renderIndex = 0;
@@ -1369,8 +1364,8 @@ ${beautifyTemplateLog(signature, -1)}`
       meta = getMeta(target);
       meta.template = template;
       meta.markers = markers;
-      meta.styles = setupStyleUpdater(target);
-      if (target.nodeType === global$1.Node.TEXT_NODE) {
+      if (target.nodeType === globalThis.Node.TEXT_NODE) {
+        updateStyleElement(target);
         meta.startNode = fragment.childNodes[0];
         meta.endNode = fragment.childNodes[fragment.childNodes.length - 1];
         let previousChild = target;
@@ -1391,7 +1386,7 @@ ${beautifyTemplateLog(signature, -1)}`
       if (useLayout)
         inject(target);
     }
-    meta.styles(styles);
+    updateStyles(target, styleSheets);
     for (const marker of meta.markers) {
       const value2 = args[marker.index];
       const prevValue = meta.prevArgs && meta.prevArgs[marker.index];
@@ -1401,15 +1396,43 @@ ${beautifyTemplateLog(signature, -1)}`
         marker.fn(host, marker.node, value2, prevValue, useLayout);
       } catch (error) {
         console.error(
-          `Following error was thrown when updating a template expression in ${stringifyElement(
+          `Error while updating template expression in ${stringifyElement(
             host
-          )}
+          )}:
 ${beautifyTemplateLog(signature, marker.index)}`
         );
         throw error;
       }
     }
     meta.prevArgs = args;
+  };
+}
+const promiseMap = /* @__PURE__ */ new WeakMap();
+function resolve(promise, placeholder, delay = 200) {
+  return function fn2(host, target) {
+    const useLayout = fn2.useLayout;
+    let timeout;
+    if (placeholder) {
+      timeout = setTimeout(() => {
+        timeout = void 0;
+        resolveValue$1(host, target, placeholder, void 0, useLayout);
+      }, delay);
+    }
+    promiseMap.set(target, promise);
+    promise.then((value2) => {
+      if (timeout)
+        clearTimeout(timeout);
+      if (promiseMap.get(target) === promise) {
+        resolveValue$1(
+          host,
+          target,
+          value2,
+          placeholder && !timeout ? placeholder : void 0,
+          useLayout
+        );
+        promiseMap.set(target, null);
+      }
+    });
   };
 }
 function resolveValue({ target, detail }, setter) {
@@ -1478,63 +1501,68 @@ function set(property, valueOrPath) {
   }
   return fn2;
 }
-const promiseMap = /* @__PURE__ */ new WeakMap();
-function resolve(promise, placeholder, delay = 200) {
+let instance;
+var transition = globalThis.document && globalThis.document.startViewTransition !== void 0 && function transition2(template) {
   return function fn2(host, target) {
-    const useLayout = fn2.useLayout;
-    let timeout;
-    if (placeholder) {
-      timeout = setTimeout(() => {
-        timeout = void 0;
-        resolveValue$1(host, target, placeholder, void 0, useLayout);
-      }, delay);
+    if (instance) {
+      console.warn(
+        `${stringifyElement(
+          host
+        )}: view transition already started in ${stringifyElement(instance)}`
+      );
+      template(host, target);
+      return;
     }
-    promiseMap.set(target, promise);
-    promise.then((value2) => {
-      if (timeout)
-        clearTimeout(timeout);
-      if (promiseMap.get(target) === promise) {
-        resolveValue$1(
-          host,
-          target,
-          value2,
-          placeholder && !timeout ? placeholder : void 0,
-          useLayout
-        );
-        promiseMap.set(target, null);
-      }
+    template.useLayout = fn2.useLayout;
+    instance = host;
+    globalThis.document.startViewTransition(() => {
+      template(host, target);
+      return deferred.then(() => {
+        instance = void 0;
+      });
     });
   };
-}
+} || ((fn2) => fn2);
 var helpers = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
+  resolve,
   set,
-  resolve
+  transition
+}, Symbol.toStringTag, { value: "Module" }));
+function key$1(id) {
+  this.id = id;
+  return this;
+}
+function style$t(...styles) {
+  this.styleSheets = this.styleSheets || [];
+  this.styleSheets.push(...styles);
+  return this;
+}
+function css(parts, ...args) {
+  this.styleSheets = this.styleSheets || [];
+  let result = parts[0];
+  for (let index = 1; index < parts.length; index++) {
+    result += (args[index - 1] !== void 0 ? args[index - 1] : "") + parts[index];
+  }
+  this.styleSheets.push(result);
+  return this;
+}
+function use(plugin) {
+  this.plugins = this.plugins || [];
+  this.plugins.push(plugin);
+  return this;
+}
+var methods = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  key: key$1,
+  style: style$t,
+  css,
+  use
 }, Symbol.toStringTag, { value: "Module" }));
 const PLACEHOLDER = getPlaceholder();
 const PLACEHOLDER_SVG = getPlaceholder("svg");
 const PLACEHOLDER_MSG = getPlaceholder("msg");
 const PLACEHOLDER_LAYOUT = getPlaceholder("layout");
-const methods = {
-  key(id) {
-    this.id = id;
-    return this;
-  },
-  style(...styles) {
-    this.styleSheets = this.styleSheets || [];
-    this.styleSheets.push(...styles);
-    return this;
-  },
-  css(parts, ...args) {
-    this.styleSheets = this.styleSheets || [];
-    let result = parts[0];
-    for (let index = 1; index < parts.length; index++) {
-      result += (args[index - 1] !== void 0 ? args[index - 1] : "") + parts[index];
-    }
-    this.styleSheets.push(result);
-    return this;
-  }
-};
 const templates = /* @__PURE__ */ new Map();
 function compile(parts, args, isSVG, isMsg) {
   function template(host, target = host) {
@@ -1549,7 +1577,14 @@ function compile(parts, args, isSVG, isMsg) {
       render3 = compileTemplate(parts, isSVG, isMsg, useLayout);
       templates.set(id, render3);
     }
-    render3(host, target, args, template.styleSheets);
+    if (template.plugins) {
+      template.plugins.reduce(
+        (acc, plugin) => plugin(acc),
+        () => render3(host, target, args, template)
+      )(host, target);
+    } else {
+      render3(host, target, args, template);
+    }
   }
   return Object.assign(template, methods);
 }
@@ -1563,7 +1598,7 @@ let translate = null;
 const languages = (() => {
   let list;
   try {
-    list = global$1.navigator.languages || [global$1.navigator.language];
+    list = globalThis.navigator.languages || [globalThis.navigator.language];
   } catch (e) {
     list = [];
   }
@@ -1599,7 +1634,7 @@ function get(key2, context2, args = []) {
                 pluralRules.set(lang2, rules2);
               }
               const pluralForms = msg;
-              msg = (number2) => number2 === 0 && pluralForms.zero || pluralForms[rules2.select(number2)] || pluralForms.other || "";
+              msg = (number) => number === 0 && pluralForms.zero || pluralForms[rules2.select(number)] || pluralForms.other || "";
             }
             break;
           }
@@ -1620,7 +1655,7 @@ function get(key2, context2, args = []) {
   }
   return typeof msg === "function" ? msg(args[0]) : msg;
 }
-var style$t = ':host{position:relative;--header-inner-max-width: 100%;--header-inner-padding: 0 24px;--search-display: block}@media screen and (max-width: 1200px){:host{--search-display: none}}.TDesign-header-notice{width:100%;height:32px;padding:8px 24px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;position:relative}.TDesign-header-notice.primary{background-color:var(--brand-main)}.TDesign-header-notice__content{cursor:pointer;color:#ffffffe6;transition:all .2s}.TDesign-header-notice__content:hover{color:#fff}.TDesign-header-notice__close{display:inline-flex;align-items:center;position:absolute;right:24px;top:8px;cursor:pointer;transition:all .2s;color:#ffffffe6}.TDesign-header-notice__close:hover{color:#fff}.TDesign-header-notice__close svg{width:16px;height:16px}.TDesign-header{height:var(--header-height);background-color:var(--bg-color-container);color:var(--text-secondary);position:relative;z-index:1400;box-shadow:var(--header-box-shadow)}.TDesign-header-inner{padding:var(--header-inner-padding);height:100%;display:flex;justify-content:space-between;align-items:center;box-sizing:border-box;max-width:var(--header-inner-max-width);margin:auto;transition:all .25s var(--anim-time-fn-easing)}.TDesign-header-left{display:flex;align-items:center}.TDesign-header .slot-search{display:var(--search-display)}.TDesign-header-nav{display:flex;align-items:center;justify-content:flex-start;column-gap:8px}.TDesign-header-nav__link{cursor:pointer;padding:4px 16px;box-sizing:border-box;height:32px;line-height:24px;color:var(--text-primary);text-decoration:none;border-radius:var(--border-radius);transition:all .1s;display:inline-block;vertical-align:middle;word-break:keep-all;flex-shrink:0}.TDesign-header-nav__link:hover{background:var(--bg-color-container-hover)}.TDesign-header-nav__link:hover .icon svg path{d:path("M3.75 10.2002L7.99274 5.7998L12.2361 10.0425")}.TDesign-header-nav__link.active{color:var(--text-primary);background:var(--bg-color-container-select)}.TDesign-header-nav__link .icon{width:16px;height:16px;display:inline-block;vertical-align:middle;margin-top:-4px;margin-left:4px}.TDesign-header-nav__link .icon svg path{transition:d .2s;stroke:currentColor}.TDesign-header-nav__git,.TDesign-header-nav__translate{display:inline-flex;color:var(--text-primary);border-radius:var(--border-radius);transition:all .2s linear;width:32px;height:32px;align-items:center;justify-content:center;cursor:pointer}.TDesign-header-nav__git:hover,.TDesign-header-nav__translate:hover{background:var(--bg-color-container-hover)}.TDesign-header-nav__git-icon,.TDesign-header-nav__translate-icon{width:24px;height:24px;display:inline-block}.TDesign-header-nav td-theme-tabs{margin-left:8px}\n';
+var style$s = ':host{position:relative;--header-inner-max-width: 100%;--header-inner-padding: 0 24px;--search-display: block}@media screen and (max-width: 1200px){:host{--search-display: none}}.TDesign-header-notice{width:100%;height:32px;padding:8px 24px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;position:relative}.TDesign-header-notice.primary{background-color:var(--brand-main)}.TDesign-header-notice__content{cursor:pointer;color:#ffffffe6;transition:all .2s}.TDesign-header-notice__content:hover{color:#fff}.TDesign-header-notice__close{display:inline-flex;align-items:center;position:absolute;right:24px;top:8px;cursor:pointer;transition:all .2s;color:#ffffffe6}.TDesign-header-notice__close:hover{color:#fff}.TDesign-header-notice__close svg{width:16px;height:16px}.TDesign-header{height:var(--header-height);background-color:var(--bg-color-container);color:var(--text-secondary);position:relative;z-index:1400;box-shadow:var(--header-box-shadow)}.TDesign-header-inner{padding:var(--header-inner-padding);height:100%;display:flex;justify-content:space-between;align-items:center;box-sizing:border-box;max-width:var(--header-inner-max-width);margin:auto;transition:all .25s var(--anim-time-fn-easing)}.TDesign-header-left{display:flex;align-items:center}.TDesign-header .slot-search{display:var(--search-display)}.TDesign-header-nav{display:flex;align-items:center;justify-content:flex-start;column-gap:8px}.TDesign-header-nav__link{cursor:pointer;padding:4px 16px;box-sizing:border-box;height:32px;line-height:24px;color:var(--text-primary);text-decoration:none;border-radius:var(--border-radius);transition:all .1s;display:inline-block;vertical-align:middle;word-break:keep-all;flex-shrink:0}.TDesign-header-nav__link:hover{background:var(--bg-color-container-hover)}.TDesign-header-nav__link:hover .icon svg path{d:path("M3.75 10.2002L7.99274 5.7998L12.2361 10.0425")}.TDesign-header-nav__link.active{color:var(--text-primary);background:var(--bg-color-container-select)}.TDesign-header-nav__link .icon{width:16px;height:16px;display:inline-block;vertical-align:middle;margin-top:-4px;margin-left:4px}.TDesign-header-nav__link .icon svg path{transition:d .2s;stroke:currentColor}.TDesign-header-nav__git,.TDesign-header-nav__translate{display:inline-flex;color:var(--text-primary);border-radius:var(--border-radius);transition:all .2s linear;width:32px;height:32px;align-items:center;justify-content:center;cursor:pointer}.TDesign-header-nav__git:hover,.TDesign-header-nav__translate:hover{background:var(--bg-color-container-hover)}.TDesign-header-nav__git-icon,.TDesign-header-nav__translate-icon{width:24px;height:24px;display:inline-block}.TDesign-header-nav td-theme-tabs{margin-left:8px}\n';
 var portalStyle$3 = "@media screen and (max-width: 960px){:host .TDesign-base-components-link{display:none}}.TDesign-base-components-links{display:flex;flex-direction:column;padding:16px;width:832px;box-sizing:border-box;row-gap:16px}.TDesign-base-components-links__web,.TDesign-base-components-links__mobile{display:flex;flex-direction:column;row-gap:8px}.TDesign-base-components-links__list{display:flex;flex-wrap:wrap;gap:4px}.TDesign-base-components-links .title{color:var(--text-placeholder);margin:0 8px;font-size:14px;line-height:22px}.TDesign-base-components-links .link{border-radius:6px;transition:all .2s linear;color:var(--text-secondary);text-decoration:none;padding:8px;display:inline-flex;align-items:center;width:264px;box-sizing:border-box}.TDesign-base-components-links .link:not(.disabled):hover{color:var(--text-primary);background:var(--bg-color-container-hover)}.TDesign-base-components-links .link .details{display:flex;flex-direction:column}.TDesign-base-components-links .link .name{font-size:14px;line-height:24px;height:24px}.TDesign-base-components-links .link .version{font-size:14px;line-height:22px;color:var(--text-placeholder)}.TDesign-base-components-links .link .icon{max-width:40px;max-height:40px;margin-right:8px}.TDesign-base-components-links .link.active{color:var(--text-primary);background:var(--bg-color-container-select)}.TDesign-base-components-links .link.disabled{cursor:no-drop}.TDesign-base-components-links .link .disable-tag,.TDesign-base-components-links .link .alpha-tag,.TDesign-base-components-links .link .beta-tag,.TDesign-base-components-links .link .rc-tag,.TDesign-base-components-links .link .stable-tag{font-size:12px;border-radius:var(--border-radius);padding:2px 4px;margin-left:4px;vertical-align:bottom}.TDesign-base-components-links .link .disable-tag{color:var(--text-secondary);background:var(--bg-color-tag)}.TDesign-base-components-links .link .alpha-tag{color:var(--brand-main);background:var(--brand-main-light);font-family:SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace}.TDesign-base-components-links .link .beta-tag,.TDesign-base-components-links .link .rc-tag{color:var(--success-main);background:var(--success-main-light);font-family:SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace}.TDesign-base-components-links .link .stable-tag{color:#029cd4;background:rgba(2,156,212,.1);font-family:SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace}\n";
 var githubIcon = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">\n  <path fill-rule="evenodd" clip-rule="evenodd"\n    d="M12 2.23999C6.475 2.23999 2 6.71499 2 12.24C2 16.665 4.8625 20.4025 8.8375 21.7275C9.3375 21.815 9.525 21.515 9.525 21.2525C9.525 21.015 9.5125 20.2275 9.5125 19.39C7 19.8525 6.35 18.7775 6.15 18.215C6.0375 17.9275 5.55 17.04 5.125 16.8025C4.775 16.615 4.275 16.1525 5.1125 16.14C5.9 16.1275 6.4625 16.865 6.65 17.165C7.55 18.6775 8.9875 18.2525 9.5625 17.99C9.65 17.34 9.9125 16.9025 10.2 16.6525C7.975 16.4025 5.65 15.54 5.65 11.715C5.65 10.6275 6.0375 9.72749 6.675 9.02749C6.575 8.77749 6.225 7.75249 6.775 6.37749C6.775 6.37749 7.6125 6.11499 9.525 7.40249C10.325 7.17749 11.175 7.06499 12.025 7.06499C12.875 7.06499 13.725 7.17749 14.525 7.40249C16.4375 6.10249 17.275 6.37749 17.275 6.37749C17.825 7.75249 17.475 8.77749 17.375 9.02749C18.0125 9.72749 18.4 10.615 18.4 11.715C18.4 15.5525 16.0625 16.4025 13.8375 16.6525C14.2 16.965 14.5125 17.565 14.5125 18.5025C14.5125 19.84 14.5 20.915 14.5 21.2525C14.5 21.515 14.6875 21.8275 15.1875 21.7275C17.1727 21.0573 18.8977 19.7815 20.1198 18.0795C21.3419 16.3776 21.9995 14.3352 22 12.24C22 6.71499 17.525 2.23999 12 2.23999Z"\n    fill="currentColor" />\n</svg>';
 var gitIcon = '<svg width="24px" height="24px" viewBox="0 0 24 24" version="1.1" xmlns="http://www.w3.org/2000/svg">\n    <g id="\u9875\u9762-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">\n        <g id="\u7EC4\u4EF6\u4EE3\u7801\u4E00\u884C\u4E00\u4E2A3" transform="translate(-1358.000000, -93.000000)" fill="currentColor" fill-rule="nonzero">\n            <g id="\u7F16\u7EC4-3" transform="translate(1358.000000, 93.000000)">\n                <g id="logo.10e09b95" transform="translate(1.000000, 2.000000)">\n                    <path d="M4.26530612,1.61632653 L12.8902041,1.61632653 L12.8902041,0 L5.18122449,0 L4.26530612,1.61632653 Z M2.18877551,5.26428571 L19.7326531,5.26428571 L18.7965306,3.64795918 L3.10469388,3.64795918 L2.18877551,5.26428571 Z M19.7685714,14.564898 L2.11244898,14.564898 L3.04632653,16.1812245 L18.8526531,16.1812245 L19.7685714,14.564898 L19.7685714,14.564898 Z" id="\u5F62\u72B6"></path>\n                    <polygon id="\u8DEF\u5F84" points="16.6885714 0 14.0822449 0 14.0822449 1.61632653 17.6381633 1.61632653"></polygon>\n                    <polygon id="\u8DEF\u5F84" points="21.9034694 10.9304082 17.2183673 10.9304082 17.2183673 12.5467347 20.987551 12.5467347 21.9034694 10.9304082"></polygon>\n                    <polygon id="\u8DEF\u5F84" points="0.949591837 12.5467347 5.76938776 12.5467347 5.76938776 10.9304082 0 10.9304082"></polygon>\n                    <polygon id="\u8DEF\u5F84" points="7.07142857 10.9304082 16.0802041 10.9304082 16.0802041 12.5467347 7.07142857 12.5467347"></polygon>\n                    <polygon id="\u8DEF\u5F84" points="17.7032653 18.1836735 6.92102041 18.1836735 6.92102041 19.8 16.7873469 19.8"></polygon>\n                    <path d="M5.13183673,19.8 L5.7155102,19.8 L5.7155102,18.1836735 L4.1822449,18.1836735 L5.13183673,19.8 L5.13183673,19.8 Z M0.0853061224,8.9122449 L9.57897959,8.9122449 L9.57897959,7.29591837 L1.00122449,7.29591837 L0.0853061224,8.9122449 Z" id="\u5F62\u72B6"></path>\n                    <polygon id="\u8DEF\u5F84" points="20.8842857 7.29591837 10.8832653 7.29591837 10.8832653 8.9122449 21.8338776 8.9122449 20.8842857 7.29591837"></polygon>\n                </g>\n            </g>\n        </g>\n    </g>\n</svg>';
@@ -2198,19 +2233,16 @@ define$2({
                   >
                   </td-collapse-menu>
                 ` : html`
-                  <div class="slot-search">
-                    <slot name="search"></slot>
-                  </div>
                   ${renderLinks$1(host, headerList, platform, framework)}
                   ${disabledTheme ? html`` : html`<td-theme-tabs></td-theme-tabs>`}
                 `}
           </div>
         </div>
       </header>
-    `.css`${style$t}`;
+    `.css`${style$s}`;
   }
 });
-var style$s = ".TDesign-collapse-menu{position:relative;display:flex;align-items:center;height:var(--header-height)}.TDesign-collapse-menu .collapse-icon{width:24px;height:24px;cursor:pointer}.TDesign-collapse-menu .collapse-icon svg{color:var(--text-primary)}\n";
+var style$r = ".TDesign-collapse-menu{position:relative;display:flex;align-items:center;height:var(--header-height)}.TDesign-collapse-menu .collapse-icon{width:24px;height:24px;cursor:pointer}.TDesign-collapse-menu .collapse-icon svg{color:var(--text-primary)}\n";
 var portalStyle$2 = ".TDesign-collapse-menu__list{min-height:32px;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:flex;padding:8px;width:254px;box-sizing:border-box;flex-direction:column;transition:all .2s var(--anim-time-fn-easing)}.TDesign-collapse-menu__list .link+.link{margin-top:4px}.TDesign-collapse-menu__list .link{display:flex;align-items:center;height:32px;box-sizing:border-box;padding:8px;text-decoration:none;color:var(--text-secondary);font-size:14px;border-radius:3px;transition:all .2s linear}.TDesign-collapse-menu__list .link:hover{color:var(--text-primary);background:var(--bg-color-container-hover)}.TDesign-collapse-menu__list .link .icon{max-width:16px;max-height:16px;margin-right:8px}.TDesign-collapse-menu__list .link svg{width:16px;height:16px}.TDesign-collapse-menu__list .link.active{color:var(--text-primary);background:var(--bg-color-container-select)}.TDesign-collapse-menu__list .link.disabled{cursor:no-drop}.TDesign-collapse-menu__list .link .disable-tag,.TDesign-collapse-menu__list .link .alpha-tag,.TDesign-collapse-menu__list .link .beta-tag,.TDesign-collapse-menu__list .link .stable-tag{font-size:12px;border-radius:var(--border-radius);padding:2px 4px;margin-left:8px}.TDesign-collapse-menu__list .link .disable-tag{color:var(--text-secondary);background:var(--bg-color-tag)}.TDesign-collapse-menu__list .link .alpha-tag{color:var(--brand-main);background:var(--brand-main-light);font-family:SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace}.TDesign-collapse-menu__list .link .beta-tag{color:var(--success-main);background:var(--success-main-light);font-family:SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace}.TDesign-collapse-menu__list .link .stable-tag{color:#029cd4;background:rgba(2,156,212,.1);font-family:SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace}.TDesign-collapse-menu__list .divider{width:100%;height:1px;margin:8px 0;background-color:var(--component-stroke)}.TDesign-collapse-menu__list .divider+.title{margin-top:0}.TDesign-collapse-menu__list .title{font-size:12px;margin:8px 8px 4px;color:var(--text-placeholder)}.TDesign-collapse-menu__list td-theme-tabs{margin-top:4px}\n";
 var bulletpointIcon = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">\n  <path d="M21.0001 4.50004L7.50007 4.5L7.50006 6L21.0001 6.00004V4.50004Z" fill="currentColor" />\n  <path d="M5.25007 4.5L3.00098 4.5L3.00098 6L5.25007 6V4.5Z" fill="currentColor" />\n  <path d="M7.50007 11.2501L21.0001 11.2501V12.7501L7.50006 12.7501L7.50007 11.2501Z" fill="currentColor" />\n  <path d="M3.00098 11.2501H5.25007V12.7501H3.00098L3.00098 11.2501Z" fill="currentColor" />\n  <path d="M7.50007 18L21.0001 18V19.5L7.50006 19.5L7.50007 18Z" fill="currentColor" />\n  <path d="M3.00098 18H5.25007V19.5H3.00098L3.00098 18Z" fill="currentColor" />\n</svg>';
 function renderLinks({ headerList: headerList2, baseComponentsLinks: baseComponentsLinks2, platform, framework }) {
@@ -2280,11 +2312,11 @@ define$2({
         </div>
       </td-doc-popup>
     </div>
-  `.css`${style$s}`
+  `.css`${style$r}`
 });
-var style$r = ".TDesign-header-logo{height:32px;display:inline-flex;align-items:center}.TDesign-header-logo .home{color:var(--text-primary);text-decoration:none}.TDesign-header-logo .home svg{display:block;height:32px}.TDesign-header-logo .divider{width:1px;height:16px;background:var(--component-stroke);margin:0 16px}.TDesign-header-logo__menu{height:32px;cursor:pointer}.TDesign-header-logo__menu svg{border-radius:var(--border-radius);padding:4px;width:32px;height:32px;box-sizing:border-box;transition:all .2s linear;color:var(--text-secondary)}.TDesign-header-logo__menu svg:hover{background-color:var(--bg-color-container-hover)}\n";
+var style$q = ".TDesign-header-logo{height:32px;display:inline-flex;align-items:center}.TDesign-header-logo .home{color:var(--text-primary);text-decoration:none}.TDesign-header-logo .home svg{display:block;height:32px}.TDesign-header-logo .divider{width:1px;height:16px;background:var(--component-stroke);margin:0 16px}.TDesign-header-logo__menu{height:32px;cursor:pointer}.TDesign-header-logo__menu svg{border-radius:var(--border-radius);padding:4px;width:32px;height:32px;box-sizing:border-box;transition:all .2s linear;color:var(--text-secondary)}.TDesign-header-logo__menu svg:hover{background-color:var(--bg-color-container-hover)}\n";
 var portalStyle$1 = ".TDesign-header-logo__content{--menu-list-width: 400px;--list-direction: row;padding:16px;border-radius:6px;width:var(--menu-list-width);box-sizing:border-box}@media screen and (max-width: 750px){.TDesign-header-logo__content{--list-direction: column;--menu-list-width: 212px}}.TDesign-header-logo__content span.title:hover{cursor:auto;color:var(--text-primary);font-family:TencentSansW7}.TDesign-header-logo__content .title{color:var(--text-primary);display:inline-flex;align-items:flex-end;margin:0 16px 8px;line-height:22px;transition:color .2s linear;text-decoration:none;font-family:TencentSansW7}.TDesign-header-logo__content .title:hover{color:var(--brand-main)}.TDesign-header-logo__content .title i{width:16px;height:16px;margin-left:4px;margin-bottom:2px}.TDesign-header-logo__content .list{display:flex;flex-wrap:wrap;flex-direction:var(--list-direction);row-gap:8px;column-gap:8px}.TDesign-header-logo__content .list .item{text-decoration:none;padding:8px;width:180px;border-radius:var(--border-radius);box-sizing:border-box;display:flex;align-items:center;row-gap:8px;column-gap:8px;transition:all .2s linear}.TDesign-header-logo__content .list .item:hover{color:var(--text-primary);background:var(--bg-color-container-hover)}.TDesign-header-logo__content .list .item.active{color:var(--text-primary);background:var(--bg-color-container-select)}.TDesign-header-logo__content .list .item .icon{width:40px;height:40px}.TDesign-header-logo__content .list .item .details{display:flex;justify-content:center;flex-direction:column}.TDesign-header-logo__content .list .item .details .name{color:var(--text-primary);font-family:TencentSansW7}.TDesign-header-logo__content .list .item .details .desc{font-size:12px;line-height:20px;color:var(--text-secondary)}.TDesign-header-logo__content .line{width:100%;height:1px;margin:16px 0;background-color:var(--component-stroke)}\n";
-var logoIcon = '<svg width="122" height="32" viewBox="0 0 122 32" fill="none" xmlns="http://www.w3.org/2000/svg">\n  <g clip-path="url(#clip0_16025_26913)">\n    <path\n      d="M42.1876 8.78706H37.2302L34.1354 26.2045H30.52L33.5916 8.78706H28.6111L29.1491 5.79641H42.7256L42.1876 8.78706Z"\n      fill="currentColor" />\n    <path\n      d="M58.4307 10.9505C58.4187 12.1155 58.3026 13.277 58.0837 14.4213L57.5052 17.8458C56.2789 24.8278 54.3815 26.2045 48.9787 26.2045H40.6777L44.2642 5.80798H51.3504C56.4929 5.80798 58.4307 7.09795 58.4307 10.9505ZM54.8211 11.4943C54.8211 9.18041 53.7163 8.79863 50.8066 8.79863H47.3358L44.8253 23.2139H48.2498C52.299 23.2139 53.1262 22.4041 53.9072 17.8516L54.4856 14.4271C54.6807 13.4608 54.793 12.4796 54.8211 11.4943Z"\n      fill="currentColor" />\n    <path\n      d="M72.2269 13.756C72.2256 14.1538 72.1889 14.5507 72.117 14.9419L71.7352 17.0706C71.3071 19.4655 70.4163 20.3042 68.1777 20.3042H62.26L62.1212 21.1372C62.047 21.5188 62.0025 21.9056 61.9881 22.2941C61.9881 23.237 62.474 23.4511 64.0359 23.4511H69.4503L68.3454 26.1756H63.388C59.9172 26.1756 58.6504 25.2848 58.6504 23.104C58.664 22.4716 58.7259 21.8412 58.8355 21.2182L59.8883 15.1791C60.5362 11.4653 62.098 10.7076 66.0547 10.7076H67.8884C70.7171 10.7365 72.2269 11.4943 72.2269 13.756ZM68.8602 14.242C68.8602 13.5941 68.4553 13.4321 67.2174 13.4321H65.3027C64.0648 13.4321 63.469 13.5941 63.174 15.208L62.7459 17.6896H67.3215C67.4654 17.7123 67.6125 17.7034 67.7526 17.6634C67.8927 17.6234 68.0223 17.5533 68.1325 17.458C68.2427 17.3627 68.3307 17.2445 68.3905 17.1116C68.4502 16.9788 68.4803 16.8345 68.4785 16.6888L68.7735 14.9535C68.8153 14.7185 68.8386 14.4806 68.8429 14.242H68.8602Z"\n      fill="currentColor" />\n    <path\n      d="M72.4121 23.48H78.7752C79.828 23.48 80.0189 23.318 80.204 22.271L80.4469 20.8422C80.4911 20.6385 80.5182 20.4315 80.5279 20.2233C80.5279 19.8704 80.337 19.8183 79.7181 19.8183H76.6233C74.2516 19.8183 73.4707 19.3613 73.4707 17.8226C73.496 17.0722 73.585 16.3252 73.7368 15.5898L73.9566 14.375C74.4946 11.2744 75.2986 10.9042 78.3471 10.9042H85.1614L84.0045 13.623H78.324C77.2712 13.623 77.0803 13.785 76.8952 14.8378L76.6812 16.0468C76.6341 16.25 76.607 16.4573 76.6002 16.6657C76.6002 17.0186 76.7853 17.0706 77.4042 17.0706H80.6378C83.0095 17.0706 83.7905 17.5276 83.7905 19.0663C83.7648 19.8187 83.6758 20.5676 83.5244 21.305L83.2236 22.9999C82.7434 25.7996 81.9336 26.1814 78.7521 26.1814H72.8922L72.4121 23.48Z"\n      fill="currentColor" />\n    <path\n      d="M87.9843 10.9274H91.3278L88.6611 26.2045H85.3176L87.9843 10.9274ZM88.9851 4.97499H92.4559L91.8369 8.44576H88.3661L88.9851 4.97499Z"\n      fill="currentColor" />\n    <path\n      d="M105.986 14.2651C105.946 15.2371 105.828 16.2043 105.633 17.1574L103.961 26.6037C103.313 30.2711 101.729 31 98.6279 31H92.8086L92.3227 28.2465H97.8759C99.9758 28.2465 100.381 28.0903 100.768 25.7186L100.953 24.6658H97.0777C93.6532 24.6658 92.2244 23.7229 92.2244 21.1372C92.2638 20.1652 92.3818 19.1979 92.5772 18.2449L92.9821 16.0063C93.7631 11.6967 94.758 10.7249 99.2585 10.7249H101.115C104.557 10.7365 105.986 11.6794 105.986 14.2651ZM101.457 21.9471L102.29 17.1227C102.462 16.3618 102.571 15.5878 102.614 14.8088C102.614 13.6519 102.035 13.4379 100.3 13.4379H99.0907C97.043 13.4379 96.719 14.0568 96.3662 16.0236L95.9612 18.2623C95.7993 19.025 95.691 19.7982 95.6373 20.5761C95.6373 21.733 96.2158 21.9529 97.9859 21.9529L101.457 21.9471Z"\n      fill="currentColor" />\n    <path\n      d="M121.367 13.6751C121.306 14.7796 121.161 15.878 120.934 16.9607L119.32 26.2161H115.976L117.619 16.9607C117.766 16.2594 117.857 15.5476 117.891 14.832C117.891 13.8891 117.486 13.6751 116.219 13.6751H112.286L110.105 26.1814H106.767L109.434 10.9042H116.855C120.286 10.9274 121.367 11.7314 121.367 13.6751Z"\n      fill="currentColor" />\n    <path\n      d="M7.97158 26.1814H3.28026C3.20254 26.1813 3.12575 26.1646 3.05505 26.1323C2.98435 26.1001 2.92139 26.053 2.87041 25.9944C2.81943 25.9357 2.78162 25.8668 2.75952 25.7923C2.73741 25.7178 2.73154 25.6394 2.74229 25.5625L3.65626 20.4026H9.44088L8.49798 25.7476C8.47291 25.8691 8.40703 25.9784 8.31127 26.0573C8.21552 26.1362 8.09566 26.18 7.97158 26.1814V26.1814Z"\n      fill="#009BFF" />\n    <path\n      d="M21.1779 8.78706H5.69824L6.71634 3.00244H21.9877C22.0714 2.99445 22.1557 3.00616 22.234 3.03663C22.3123 3.06709 22.3823 3.11547 22.4386 3.17789C22.4948 3.2403 22.5356 3.31502 22.5578 3.39605C22.58 3.47709 22.5828 3.56219 22.5662 3.64453L21.7101 8.35321C21.6869 8.47672 21.6207 8.58803 21.5233 8.66744C21.4259 8.74684 21.3035 8.78922 21.1779 8.78706Z"\n      fill="url(#paint0_linear_16025_26913)" />\n    <path\n      d="M5.69814 8.78706H0.549824C0.471061 8.78794 0.393048 8.77169 0.321181 8.73945C0.249315 8.70721 0.185311 8.65974 0.133598 8.60033C0.081885 8.54091 0.0436979 8.47097 0.0216786 8.39534C-0.000340748 8.31972 -0.00566652 8.24021 0.00606973 8.16232L0.84484 3.44785C0.867754 3.32323 0.933469 3.21053 1.03064 3.12921C1.1278 3.04788 1.25032 3.00304 1.37702 3.00244H6.71623L5.69814 8.78706Z"\n      fill="#0064FF" />\n    <path d="M9.44658 20.3852H3.65039L5.69815 8.79863H11.4943L9.44658 20.3852Z"\n      fill="url(#paint1_linear_16025_26913)" />\n  </g>\n  <defs>\n    <linearGradient id="paint0_linear_16025_26913" x1="6.19468" y1="5.90053" x2="21.6312" y2="8.6791"\n      gradientUnits="userSpaceOnUse">\n      <stop offset="0.03" stop-color="#E9FFFF" />\n      <stop offset="0.17" stop-color="#C4FAC9" />\n      <stop offset="0.33" stop-color="#A0F694" />\n      <stop offset="0.48" stop-color="#82F269" />\n      <stop offset="0.63" stop-color="#6AEF47" />\n      <stop offset="0.76" stop-color="#5AED2F" />\n      <stop offset="0.89" stop-color="#4FEB20" />\n      <stop offset="1" stop-color="#4CEB1B" />\n    </linearGradient>\n    <linearGradient id="paint1_linear_16025_26913" x1="8.58918" y1="8.37635" x2="8.69869" y2="19.278"\n      gradientUnits="userSpaceOnUse">\n      <stop stop-color="#009BFF" />\n      <stop offset="0.35" stop-color="#0081FE" />\n      <stop offset="0.75" stop-color="#006AFD" />\n      <stop offset="1" stop-color="#0062FD" />\n    </linearGradient>\n    <clipPath id="clip0_16025_26913">\n      <rect width="121.367" height="32" fill="white" />\n    </clipPath>\n  </defs>\n</svg>';
+var logoIcon = '<?xml version="1.0" encoding="UTF-8"?>\n<svg width="164px" height="32px" viewBox="0 0 164 32" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">\n    <title>Group 2</title>\n    <defs>\n        <linearGradient x1="50%" y1="3.77777778%" x2="50%" y2="93.4888889%" id="linearGradient-1">\n            <stop stop-color="#FFF650" offset="0%"></stop>\n            <stop stop-color="#FFAB17" offset="100%"></stop>\n        </linearGradient>\n        <linearGradient x1="50%" y1="3.77777778%" x2="50%" y2="93.4888889%" id="linearGradient-2">\n            <stop stop-color="#E864FF" offset="0%"></stop>\n            <stop stop-color="#BA20ED" offset="100%"></stop>\n        </linearGradient>\n        <linearGradient x1="550%" y1="1429.8%" x2="550%" y2="2209.8%" id="linearGradient-3">\n            <stop stop-color="#E864FF" offset="0%"></stop>\n            <stop stop-color="#BA20ED" offset="100%"></stop>\n        </linearGradient>\n        <linearGradient x1="1850%" y1="1429.8%" x2="1850%" y2="2209.8%" id="linearGradient-4">\n            <stop stop-color="#FFF650" offset="0%"></stop>\n            <stop stop-color="#FFAB17" offset="100%"></stop>\n        </linearGradient>\n    </defs>\n    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">\n        <g id="Group" transform="translate(1.000000, 1.000000)">\n            <text id="Wozaizhao" font-family="DigitalSansEFMedium, Digital Sans EF" font-size="26" font-weight="400" fill="#000000">\n                <tspan x="41" y="24">Wozaizhao</tspan>\n            </text>\n            <g id="logo" fill-rule="nonzero">\n                <rect id="Rectangle" fill="url(#linearGradient-1)" x="0" y="0" width="11.8344156" height="12.2727273" rx="2"></rect>\n                <rect id="Rectangle" fill="url(#linearGradient-2)" x="17.0941558" y="0" width="11.8344156" height="12.2727273" rx="2"></rect>\n                <rect id="Rectangle" fill="url(#linearGradient-3)" x="0" y="17.7272727" width="11.8344156" height="12.2727273" rx="2"></rect>\n                <rect id="Rectangle" fill="url(#linearGradient-4)" x="17.0941558" y="17.7272727" width="11.8344156" height="12.2727273" rx="2"></rect>\n            </g>\n        </g>\n    </g>\n</svg>';
 var menuApplicationIcon = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">\n<path d="M6 4.5C6 5.32846 5.32846 6 4.5 6C3.67154 6 3 5.32846 3 4.5C3 3.67154 3.67154 3 4.5 3C5.32846 3 6 3.67154 6 4.5Z" fill="currentColor" />\n<path d="M6 12C6 12.8285 5.32846 13.5 4.5 13.5C3.67154 13.5 3 12.8285 3 12C3 11.1715 3.67154 10.5 4.5 10.5C5.32846 10.5 6 11.1715 6 12Z" fill="currentColor" />\n<path d="M4.5 21C5.32846 21 6 20.3285 6 19.5C6 18.6715 5.32846 18 4.5 18C3.67154 18 3 18.6715 3 19.5C3 20.3285 3.67154 21 4.5 21Z" fill="currentColor" />\n<path d="M13.5 4.5C13.5 5.32846 12.8285 6 12 6C11.1715 6 10.5 5.32846 10.5 4.5C10.5 3.67154 11.1715 3 12 3C12.8285 3 13.5 3.67154 13.5 4.5Z" fill="currentColor" />\n<path d="M12 13.5C12.8285 13.5 13.5 12.8285 13.5 12C13.5 11.1715 12.8285 10.5 12 10.5C11.1715 10.5 10.5 11.1715 10.5 12C10.5 12.8285 11.1715 13.5 12 13.5Z" fill="currentColor" />\n<path d="M13.5 19.5C13.5 20.3285 12.8285 21 12 21C11.1715 21 10.5 20.3285 10.5 19.5C10.5 18.6715 11.1715 18 12 18C12.8285 18 13.5 18.6715 13.5 19.5Z" fill="currentColor" />\n<path d="M19.5 6C20.3285 6 21 5.32846 21 4.5C21 3.67154 20.3285 3 19.5 3C18.6715 3 18 3.67154 18 4.5C18 5.32846 18.6715 6 19.5 6Z" fill="currentColor" />\n<path d="M21 12C21 12.8285 20.3285 13.5 19.5 13.5C18.6715 13.5 18 12.8285 18 12C18 11.1715 18.6715 10.5 19.5 10.5C20.3285 10.5 21 11.1715 21 12Z" fill="currentColor" />\n<path d="M19.5 21C20.3285 21 21 20.3285 21 19.5C21 18.6715 20.3285 18 19.5 18C18.6715 18 18 18.6715 18 19.5C18 20.3285 18.6715 21 19.5 21Z" fill="currentColor" />\n</svg>\n';
 var chevronRightIcon = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">\n  <path d="M6.46042 12.4592L5.54119 11.54L9.08157 7.99961L5.54119 4.45923L6.46042 3.53999L10.92 7.99961L6.46042 12.4592Z" fill="currentColor" />\n</svg>\n';
 const logoMenuConfigCdn = "https://cdc.cdn-go.cn/tdc/latest/menu.json";
@@ -2346,21 +2378,21 @@ define$2({
     }
   },
   render: ({ menuList }) => html`
-    <style>${style$r}</style>
+    <style>${style$q}</style>
 
     <div class="TDesign-header-logo">
+      <a class="home" href="/" title="TDesign" innerHTML=${logoIcon}></a>
+      <span class="divider"></span>
       <td-doc-popup portalStyle="${portalStyle$1}" placement="bottom-start">
         <div class="TDesign-header-logo__menu" innerHTML=${menuApplicationIcon}></div>
         <div slot="content" class="TDesign-header-logo__content">
           ${renderMenu(menuList)}
         </div>
       </td-doc-popup>
-      <span class="divider"></span>
-      <a class="home" href="/" title="TDesign" innerHTML=${logoIcon}></a>
     </div>
   `
 });
-var style$q = ":host{position:fixed;right:24px;bottom:80px;z-index:300}:host .TDesign-backtop{width:48px;height:48px;display:flex;justify-content:center;align-items:center;border-radius:6px;box-sizing:border-box;backdrop-filter:blur(10px);background-color:var(--component-border);cursor:pointer;transition:all .2s ease;opacity:0;visibility:hidden;color:var(--text-secondary)}:host .TDesign-backtop.show{opacity:1;visibility:visible}:host .TDesign-backtop:hover{color:var(--text-primary)}:host .TDesign-backtop:hover .TDesign-backtop__inner{transform:scale(.95)}:host .TDesign-backtop__inner{width:calc(100% - 2px);height:calc(100% - 2px);border-radius:5px;display:flex;justify-content:center;align-items:center;background-color:var(--bg-color-container-transparent);box-sizing:border-box;transition:all .2s ease}:host .TDesign-backtop__inner svg{width:20px;height:20px}\n";
+var style$p = ":host{position:fixed;right:24px;bottom:80px;z-index:300}:host .TDesign-backtop{width:48px;height:48px;display:flex;justify-content:center;align-items:center;border-radius:6px;box-sizing:border-box;backdrop-filter:blur(10px);background-color:var(--component-border);cursor:pointer;transition:all .2s ease;opacity:0;visibility:hidden;color:var(--text-secondary)}:host .TDesign-backtop.show{opacity:1;visibility:visible}:host .TDesign-backtop:hover{color:var(--text-primary)}:host .TDesign-backtop:hover .TDesign-backtop__inner{transform:scale(.95)}:host .TDesign-backtop__inner{width:calc(100% - 2px);height:calc(100% - 2px);border-radius:5px;display:flex;justify-content:center;align-items:center;background-color:var(--bg-color-container-transparent);box-sizing:border-box;transition:all .2s ease}:host .TDesign-backtop__inner svg{width:20px;height:20px}\n";
 var backTopIcon = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">\n  <path fill="currentColor" d="M1.73734 0.5V1.75H14.2373V0.5H1.73734Z" />\n  <path fill="currentColor" d="M15.0669 8.86364L14.1831 9.74752L8.62087 4.18534V15.5426H7.37087V4.18534L1.80869 9.74752L0.924805 8.86364L7.99587 1.79257L15.0669 8.86364Z" />\n</svg>';
 function handleBacktop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2388,9 +2420,9 @@ define$2({
     <div class="TDesign-backtop ${backtopShow ? "show" : ""}" onclick="${handleBacktop}">
       <div class="TDesign-backtop__inner" innerHTML=${backTopIcon}></div>
     </div>
-  `.css`${style$q}`
+  `.css`${style$p}`
 });
-var style$p = ".TDesign-avatar{margin-right:8px;display:inline-flex;align-items:center;justify-content:center}.TDesign-avatar .avatar{width:40px;height:40px;display:inline-block}.TDesign-avatar .avatar img{width:40px;height:40px;border-radius:100%}\n";
+var style$o = ".TDesign-avatar{margin-right:8px;display:inline-flex;align-items:center;justify-content:center}.TDesign-avatar .avatar{width:40px;height:40px;display:inline-block}.TDesign-avatar .avatar img{width:40px;height:40px;border-radius:100%}\n";
 define$2({
   tag: "td-avatar",
   content: "",
@@ -2409,85 +2441,7 @@ define$2({
             <div slot="content">${content || username}</div>
           </td-tooltip>
         </div>
-      `.css`${style$p}`;
-  }
-});
-var style$o = ".TDesign-contributors .title{font-weight:700;font-size:20px;line-height:28px;margin:48px 0 16px}.TDesign-contributors__content{display:flex;flex-wrap:wrap}.TDesign-contributors__content td-tooltip{margin-right:8px}.TDesign-contributors__content img{width:40px;height:40px;border-radius:100%}.TDesign-contributors__content .avatar{width:40px;height:40px;display:inline-block}\n";
-const apiUrl = "https://service-edbzjd6y-1257786608.hk.apigw.tencentcs.com/release/github-contributors/list";
-function renderContributors(list) {
-  if (!list.length)
-    return html``;
-  const contributors = list.filter((item) => typeof item === "object" && item !== null);
-  return html`
-    <section class="TDesign-contributors">
-      <h3 class="title">Contributors</h3>
-      <div class="TDesign-contributors__content">
-        ${contributors.map((item) => html`
-          <td-avatar username="${item == null ? void 0 : item.username}" content="${item == null ? void 0 : item.roleNames} ${item == null ? void 0 : item.username}"></td-avatar>
-        `)}
-      </div>
-    </section>
-  `;
-}
-function getContributors(platform, framework, componentName, contributorsData) {
-  const taskReg = new RegExp(`api|interaction|design|ui|^${framework}$|${framework}-test`);
-  if (!platform || !framework || !componentName || !contributorsData[platform])
-    return [];
-  const componentInfo = contributorsData[platform].find((item) => item.name === componentName);
-  if (!componentInfo)
-    return [];
-  let { tasks } = componentInfo;
-  tasks = tasks.filter((item) => item.name.search(taskReg) !== -1 && item.contributors.length > 0);
-  const members = {};
-  tasks.forEach((c) => {
-    ["contributors", "pmcs"].forEach((key2) => {
-      c[key2].forEach((m) => {
-        if (members[m]) {
-          members[m].role.push(c.name);
-          members[m].roleName.push(c.fullName);
-        } else {
-          members[m] = { role: [c.name], roleName: [c.fullName] };
-        }
-      });
-    });
-  });
-  return Object.keys(members).map((username) => {
-    return {
-      username,
-      roleNames: [...new Set(members[username].roleName)].join("/"),
-      ...members[username]
-    };
-  });
-}
-define$2({
-  tag: "td-contributors",
-  platform: "",
-  framework: "",
-  componentName: "",
-  contributorsData: {
-    get: (host, lastValue) => lastValue || {},
-    set: (host, value2) => value2,
-    connect: (host, key2, invalidate2) => {
-      const cache2 = sessionStorage.getItem("__tdesign_contributors__");
-      if (cache2) {
-        const data = JSON.parse(cache2);
-        Object.assign(host, { [key2]: data });
-        invalidate2();
-      } else {
-        fetch(apiUrl).then((res) => res.json()).then((data) => {
-          Object.assign(host, { [key2]: data });
-          sessionStorage.setItem("__tdesign_contributors__", JSON.stringify(data));
-          invalidate2();
-        }).catch((err) => {
-          console.error(err);
-        });
-      }
-    }
-  },
-  render: (host) => {
-    const { platform, framework, componentName } = host;
-    const contributors = getContributors(platform, framework, componentName, host.contributorsData);
-    return renderContributors(contributors).css`${style$o}`;
+      `.css`${style$o}`;
   }
 });
 var style$n = '.TDesign-tooltip{position:relative}.TDesign-tooltip[data-placement=top] .TDesign-tooltip__popup{top:-36px}.TDesign-tooltip[data-placement=top] .TDesign-tooltip__popup:after{bottom:-12px;border-top-color:var(--bg-color-container)}.TDesign-tooltip[data-placement=bottom] .TDesign-tooltip__popup{bottom:-36px}.TDesign-tooltip[data-placement=bottom] .TDesign-tooltip__popup:after{top:-12px;border-bottom-color:var(--bg-color-container)}.TDesign-tooltip__popup{position:absolute;left:50%;transform:translate(-50%);color:var(--text-primary);border-radius:var(--border-radius);padding:4px 8px;white-space:nowrap;line-height:22px;visibility:hidden;opacity:0;z-index:900;transition:all .2s linear;background-color:var(--bg-color-container);box-shadow:0 3px 14px 2px #0000000d,0 8px 10px 1px #0000000f,0 5px 5px -3px #0000001a}.TDesign-tooltip__popup:after{content:"";z-index:2;width:0;height:0;border-style:solid;border-width:6px;border-color:transparent;left:50%;position:absolute;margin-left:-6px}.TDesign-tooltip__popup.show{opacity:1;visibility:visible}\n';
@@ -2641,15 +2595,15 @@ var nprogress = { exports: {} };
       queue2(function(next) {
         if (Settings.positionUsing === "")
           Settings.positionUsing = NProgress2.getPositioningCSS();
-        css(bar, barPositionCSS(n, speed, ease));
+        css2(bar, barPositionCSS(n, speed, ease));
         if (n === 1) {
-          css(progress, {
+          css2(progress, {
             transition: "none",
             opacity: 1
           });
           progress.offsetWidth;
           setTimeout(function() {
-            css(progress, {
+            css2(progress, {
               transition: "all " + speed + "ms linear",
               opacity: 0
             });
@@ -2733,7 +2687,7 @@ var nprogress = { exports: {} };
       progress.id = "nprogress";
       progress.innerHTML = Settings.template;
       var bar = progress.querySelector(Settings.barSelector), perc = fromStart ? "-100" : toBarPerc(NProgress2.status || 0), parent = document.querySelector(Settings.parent), spinner;
-      css(bar, {
+      css2(bar, {
         transition: "all 0 linear",
         transform: "translate3d(" + perc + "%,0,0)"
       });
@@ -2803,10 +2757,10 @@ var nprogress = { exports: {} };
           next();
       };
     }();
-    var css = function() {
+    var css2 = function() {
       var cssPrefixes = ["Webkit", "O", "Moz", "ms"], cssProps = {};
-      function camelCase(string2) {
-        return string2.replace(/^-ms-/, "ms-").replace(/-([\da-z])/gi, function(match, letter) {
+      function camelCase(string) {
+        return string.replace(/^-ms-/, "ms-").replace(/-([\da-z])/gi, function(match, letter) {
           return letter.toUpperCase();
         });
       }
@@ -3695,7 +3649,7 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
     },
     function(module2, exports2, __webpack_require__) {
       var _ = __webpack_require__(0);
-      var css = {
+      var css2 = {
         wrapper: { position: "relative", display: "inline-block" },
         hint: {
           position: "absolute",
@@ -3744,14 +3698,14 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
         }
       };
       if (_.isMsie()) {
-        _.mixin(css.input, {
+        _.mixin(css2.input, {
           backgroundImage: "url(data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7)"
         });
       }
       if (_.isMsie() && _.isMsie() <= 7) {
-        _.mixin(css.input, { marginTop: "-1px" });
+        _.mixin(css2.input, { marginTop: "-1px" });
       }
-      module2.exports = css;
+      module2.exports = css2;
     },
     function(module2, exports2) {
       if (typeof Object.create === "function") {
@@ -4518,14 +4472,14 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
                   return props;
                 }
               }
-              var css = "";
+              var css2 = "";
               if (type(property) == "string") {
                 if (!value2 && value2 !== 0)
                   this.each(function() {
                     this.style.removeProperty(dasherize(property));
                   });
                 else
-                  css = dasherize(property) + ":" + maybeAddPx(property, value2);
+                  css2 = dasherize(property) + ":" + maybeAddPx(property, value2);
               } else {
                 for (key2 in property)
                   if (!property[key2] && property[key2] !== 0)
@@ -4533,10 +4487,10 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
                       this.style.removeProperty(dasherize(key2));
                     });
                   else
-                    css += dasherize(key2) + ":" + maybeAddPx(key2, property[key2]) + ";";
+                    css2 += dasherize(key2) + ":" + maybeAddPx(key2, property[key2]) + ";";
               }
               return this.each(function() {
-                this.style.cssText += ";" + css;
+                this.style.cssText += ";" + css2;
               });
             },
             index: function(element) {
@@ -5222,8 +5176,8 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
       function _interopRequireDefault(obj) {
         return obj && obj.__esModule ? obj : { default: obj };
       }
-      function _classCallCheck(instance, Constructor) {
-        if (!(instance instanceof Constructor)) {
+      function _classCallCheck(instance2, Constructor) {
+        if (!(instance2 instanceof Constructor)) {
           throw new TypeError("Cannot call a class as a function");
         }
       }
@@ -6106,13 +6060,13 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
           }
           return val;
         }
-        function createSpecializedPartial(instance, subs, partials, stackSubs, stackPartials, stackText) {
+        function createSpecializedPartial(instance2, subs, partials, stackSubs, stackPartials, stackText) {
           function PartialTemplate() {
           }
-          PartialTemplate.prototype = instance;
+          PartialTemplate.prototype = instance2;
           function Substitutions() {
           }
-          Substitutions.prototype = instance.subs;
+          Substitutions.prototype = instance2.subs;
           var key2;
           var partial = new PartialTemplate();
           partial.subs = new Substitutions();
@@ -8114,7 +8068,7 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
           Promise$1._setScheduler = setScheduler;
           Promise$1._setAsap = setAsap;
           Promise$1._asap = asap;
-          function polyfill2() {
+          function polyfill() {
             var local = void 0;
             if (typeof global2 !== "undefined") {
               local = global2;
@@ -8142,7 +8096,7 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
             }
             local.Promise = Promise$1;
           }
-          Promise$1.polyfill = polyfill2;
+          Promise$1.polyfill = polyfill;
           Promise$1.Promise = Promise$1;
           return Promise$1;
         });
@@ -8435,7 +8389,7 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
       var Input = __webpack_require__(52);
       var Dropdown = __webpack_require__(59);
       var html2 = __webpack_require__(17);
-      var css = __webpack_require__(11);
+      var css2 = __webpack_require__(11);
       function Typeahead(o) {
         var $menu;
         var $hint;
@@ -8458,10 +8412,10 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
             "[autocomplete.js] hint and appendTo options can't be used at the same time"
           );
         }
-        this.css = o.css = _.mixin({}, css, o.appendTo ? css.appendTo : {});
+        this.css = o.css = _.mixin({}, css2, o.appendTo ? css2.appendTo : {});
         this.cssClasses = o.cssClasses = _.mixin(
           {},
-          css.defaultClasses,
+          css2.defaultClasses,
           o.cssClasses || {}
         );
         this.cssClasses.prefix = o.cssClasses.formattedPrefix = _.formatPrefix(
@@ -9330,7 +9284,7 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
       var DOM = __webpack_require__(1);
       var EventEmitter = __webpack_require__(10);
       var Dataset = __webpack_require__(60);
-      var css = __webpack_require__(11);
+      var css2 = __webpack_require__(11);
       function Dropdown(o) {
         var that = this;
         var onSuggestionClick;
@@ -9351,10 +9305,10 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
         this.minLength = o.minLength || 0;
         this.templates = {};
         this.appendTo = o.appendTo || false;
-        this.css = _.mixin({}, css, o.appendTo ? css.appendTo : {});
+        this.css = _.mixin({}, css2, o.appendTo ? css2.appendTo : {});
         this.cssClasses = o.cssClasses = _.mixin(
           {},
-          css.defaultClasses,
+          css2.defaultClasses,
           o.cssClasses || {}
         );
         this.cssClasses.prefix = o.cssClasses.formattedPrefix || _.formatPrefix(this.cssClasses.prefix, this.cssClasses.noPrefix);
@@ -9634,7 +9588,7 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
       var _ = __webpack_require__(0);
       var DOM = __webpack_require__(1);
       var html2 = __webpack_require__(17);
-      var css = __webpack_require__(11);
+      var css2 = __webpack_require__(11);
       var EventEmitter = __webpack_require__(10);
       function Dataset(o) {
         o = o || {};
@@ -9654,10 +9608,10 @@ var searchIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xm
         this.debounce = o.debounce;
         this.cache = o.cache !== false;
         this.templates = getTemplates(o.templates, this.displayFn);
-        this.css = _.mixin({}, css, o.appendTo ? css.appendTo : {});
+        this.css = _.mixin({}, css2, o.appendTo ? css2.appendTo : {});
         this.cssClasses = o.cssClasses = _.mixin(
           {},
-          css.defaultClasses,
+          css2.defaultClasses,
           o.cssClasses || {}
         );
         this.cssClasses.prefix = o.cssClasses.formattedPrefix || _.formatPrefix(this.cssClasses.prefix, this.cssClasses.noPrefix);
@@ -10777,7 +10731,7 @@ var min = Math.min;
 var round = Math.round;
 function getUAString() {
   var uaData = navigator.userAgentData;
-  if (uaData != null && uaData.brands) {
+  if (uaData != null && uaData.brands && Array.isArray(uaData.brands)) {
     return uaData.brands.map(function(item) {
       return item.brand + "/" + item.version;
     }).join(" ");
@@ -10885,8 +10839,8 @@ function getContainingBlock(element) {
     currentNode = currentNode.host;
   }
   while (isHTMLElement(currentNode) && ["html", "body"].indexOf(getNodeName(currentNode)) < 0) {
-    var css = getComputedStyle$1(currentNode);
-    if (css.transform !== "none" || css.perspective !== "none" || css.contain === "paint" || ["transform", "perspective"].indexOf(css.willChange) !== -1 || isFirefox && css.willChange === "filter" || isFirefox && css.filter && css.filter !== "none") {
+    var css2 = getComputedStyle$1(currentNode);
+    if (css2.transform !== "none" || css2.perspective !== "none" || css2.contain === "paint" || ["transform", "perspective"].indexOf(css2.willChange) !== -1 || isFirefox && css2.willChange === "filter" || isFirefox && css2.filter && css2.filter !== "none") {
       return currentNode;
     } else {
       currentNode = currentNode.parentNode;
@@ -11001,9 +10955,8 @@ var unsetSides = {
   bottom: "auto",
   left: "auto"
 };
-function roundOffsetsByDPR(_ref) {
+function roundOffsetsByDPR(_ref, win) {
   var x = _ref.x, y = _ref.y;
-  var win = window;
   var dpr = win.devicePixelRatio || 1;
   return {
     x: round(x * dpr) / dpr || 0,
@@ -11059,7 +11012,7 @@ function mapToStyles(_ref2) {
   var _ref4 = roundOffsets === true ? roundOffsetsByDPR({
     x,
     y
-  }) : {
+  }, getWindow(popper2)) : {
     x,
     y
   };
@@ -11113,26 +11066,26 @@ var passive = {
   passive: true
 };
 function effect(_ref) {
-  var state = _ref.state, instance = _ref.instance, options = _ref.options;
+  var state = _ref.state, instance2 = _ref.instance, options = _ref.options;
   var _options$scroll = options.scroll, scroll = _options$scroll === void 0 ? true : _options$scroll, _options$resize = options.resize, resize = _options$resize === void 0 ? true : _options$resize;
   var window2 = getWindow(state.elements.popper);
   var scrollParents = [].concat(state.scrollParents.reference, state.scrollParents.popper);
   if (scroll) {
     scrollParents.forEach(function(scrollParent) {
-      scrollParent.addEventListener("scroll", instance.update, passive);
+      scrollParent.addEventListener("scroll", instance2.update, passive);
     });
   }
   if (resize) {
-    window2.addEventListener("resize", instance.update, passive);
+    window2.addEventListener("resize", instance2.update, passive);
   }
   return function() {
     if (scroll) {
       scrollParents.forEach(function(scrollParent) {
-        scrollParent.removeEventListener("scroll", instance.update, passive);
+        scrollParent.removeEventListener("scroll", instance2.update, passive);
       });
     }
     if (resize) {
-      window2.removeEventListener("resize", instance.update, passive);
+      window2.removeEventListener("resize", instance2.update, passive);
     }
   };
 }
@@ -11868,7 +11821,7 @@ function popperGenerator(generatorOptions) {
     };
     var effectCleanupFns = [];
     var isDestroyed = false;
-    var instance = {
+    var instance2 = {
       state,
       setOptions: function setOptions(setOptionsAction) {
         var options2 = typeof setOptionsAction === "function" ? setOptionsAction(state.options) : setOptionsAction;
@@ -11883,7 +11836,7 @@ function popperGenerator(generatorOptions) {
           return m.enabled;
         });
         runModifierEffects();
-        return instance.update();
+        return instance2.update();
       },
       forceUpdate: function forceUpdate() {
         if (isDestroyed) {
@@ -11914,14 +11867,14 @@ function popperGenerator(generatorOptions) {
               state,
               options: _options,
               name,
-              instance
+              instance: instance2
             }) || state;
           }
         }
       },
       update: debounce(function() {
         return new Promise(function(resolve2) {
-          instance.forceUpdate();
+          instance2.forceUpdate();
           resolve2(state);
         });
       }),
@@ -11931,21 +11884,21 @@ function popperGenerator(generatorOptions) {
       }
     };
     if (!areValidElements(reference2, popper2)) {
-      return instance;
+      return instance2;
     }
-    instance.setOptions(options).then(function(state2) {
+    instance2.setOptions(options).then(function(state2) {
       if (!isDestroyed && options.onFirstUpdate) {
         options.onFirstUpdate(state2);
       }
     });
     function runModifierEffects() {
-      state.orderedModifiers.forEach(function(_ref3) {
-        var name = _ref3.name, _ref3$options = _ref3.options, options2 = _ref3$options === void 0 ? {} : _ref3$options, effect2 = _ref3.effect;
+      state.orderedModifiers.forEach(function(_ref) {
+        var name = _ref.name, _ref$options = _ref.options, options2 = _ref$options === void 0 ? {} : _ref$options, effect2 = _ref.effect;
         if (typeof effect2 === "function") {
           var cleanupFn = effect2({
             state,
             name,
-            instance,
+            instance: instance2,
             options: options2
           });
           var noopFn = function noopFn2() {
@@ -11960,7 +11913,7 @@ function popperGenerator(generatorOptions) {
       });
       effectCleanupFns = [];
     }
-    return instance;
+    return instance2;
   };
 }
 var defaultModifiers = [eventListeners, popperOffsets$1, computeStyles$1, applyStyles$1, offset$1, flip$1, preventOverflow$1, arrow$1, hide$1];
@@ -12175,11 +12128,11 @@ var errorCorrectionLevel = {};
   exports2.M = { bit: 0 };
   exports2.Q = { bit: 3 };
   exports2.H = { bit: 2 };
-  function fromString(string2) {
-    if (typeof string2 !== "string") {
+  function fromString(string) {
+    if (typeof string !== "string") {
       throw new Error("Param is not a string");
     }
-    const lcStr = string2.toLowerCase();
+    const lcStr = string.toLowerCase();
     switch (lcStr) {
       case "l":
       case "low":
@@ -12194,7 +12147,7 @@ var errorCorrectionLevel = {};
       case "high":
         return exports2.H;
       default:
-        throw new Error("Unknown EC Level: " + string2);
+        throw new Error("Unknown EC Level: " + string);
     }
   }
   exports2.isValid = function isValid2(level) {
@@ -12984,11 +12937,11 @@ regex.testAlphanumeric = function testAlphanumeric(str) {
   exports2.isValid = function isValid2(mode2) {
     return mode2 && mode2.bit && mode2.ccBits;
   };
-  function fromString(string2) {
-    if (typeof string2 !== "string") {
+  function fromString(string) {
+    if (typeof string !== "string") {
       throw new Error("Param is not a string");
     }
-    const lcStr = string2.toLowerCase();
+    const lcStr = string.toLowerCase();
     switch (lcStr) {
       case "numeric":
         return exports2.NUMERIC;
@@ -12999,7 +12952,7 @@ regex.testAlphanumeric = function testAlphanumeric(str) {
       case "byte":
         return exports2.BYTE;
       default:
-        throw new Error("Unknown mode: " + string2);
+        throw new Error("Unknown mode: " + string);
     }
   }
   exports2.from = function from2(value2, defaultValue) {
@@ -15000,11 +14953,11 @@ var prism = { exports: {} };
   Prism2.languages.atom = Prism2.languages.xml;
   Prism2.languages.rss = Prism2.languages.xml;
   (function(Prism3) {
-    var string2 = /(?:"(?:\\(?:\r\n|[\s\S])|[^"\\\r\n])*"|'(?:\\(?:\r\n|[\s\S])|[^'\\\r\n])*')/;
+    var string = /(?:"(?:\\(?:\r\n|[\s\S])|[^"\\\r\n])*"|'(?:\\(?:\r\n|[\s\S])|[^'\\\r\n])*')/;
     Prism3.languages.css = {
       "comment": /\/\*[\s\S]*?\*\//,
       "atrule": {
-        pattern: RegExp("@[\\w-](?:" + /[^;{\s"']|\s+(?!\s)/.source + "|" + string2.source + ")*?" + /(?:;|(?=\s*\{))/.source),
+        pattern: RegExp("@[\\w-](?:" + /[^;{\s"']|\s+(?!\s)/.source + "|" + string.source + ")*?" + /(?:;|(?=\s*\{))/.source),
         inside: {
           "rule": /^@[\w-]+/,
           "selector-function-argument": {
@@ -15019,23 +14972,23 @@ var prism = { exports: {} };
         }
       },
       "url": {
-        pattern: RegExp("\\burl\\((?:" + string2.source + "|" + /(?:[^\\\r\n()"']|\\[\s\S])*/.source + ")\\)", "i"),
+        pattern: RegExp("\\burl\\((?:" + string.source + "|" + /(?:[^\\\r\n()"']|\\[\s\S])*/.source + ")\\)", "i"),
         greedy: true,
         inside: {
           "function": /^url/i,
           "punctuation": /^\(|\)$/,
           "string": {
-            pattern: RegExp("^" + string2.source + "$"),
+            pattern: RegExp("^" + string.source + "$"),
             alias: "url"
           }
         }
       },
       "selector": {
-        pattern: RegExp(`(^|[{}\\s])[^{}\\s](?:[^{};"'\\s]|\\s+(?![\\s{])|` + string2.source + ")*(?=\\s*\\{)"),
+        pattern: RegExp(`(^|[{}\\s])[^{}\\s](?:[^{};"'\\s]|\\s+(?![\\s{])|` + string.source + ")*(?=\\s*\\{)"),
         lookbehind: true
       },
       "string": {
-        pattern: string2,
+        pattern: string,
         greedy: true
       },
       "property": {
@@ -15502,11 +15455,11 @@ Prism.languages.ssml = Prism.languages.xml;
 Prism.languages.atom = Prism.languages.xml;
 Prism.languages.rss = Prism.languages.xml;
 (function(Prism2) {
-  var string2 = /(?:"(?:\\(?:\r\n|[\s\S])|[^"\\\r\n])*"|'(?:\\(?:\r\n|[\s\S])|[^'\\\r\n])*')/;
+  var string = /(?:"(?:\\(?:\r\n|[\s\S])|[^"\\\r\n])*"|'(?:\\(?:\r\n|[\s\S])|[^'\\\r\n])*')/;
   Prism2.languages.css = {
     "comment": /\/\*[\s\S]*?\*\//,
     "atrule": {
-      pattern: RegExp("@[\\w-](?:" + /[^;{\s"']|\s+(?!\s)/.source + "|" + string2.source + ")*?" + /(?:;|(?=\s*\{))/.source),
+      pattern: RegExp("@[\\w-](?:" + /[^;{\s"']|\s+(?!\s)/.source + "|" + string.source + ")*?" + /(?:;|(?=\s*\{))/.source),
       inside: {
         "rule": /^@[\w-]+/,
         "selector-function-argument": {
@@ -15521,23 +15474,23 @@ Prism.languages.rss = Prism.languages.xml;
       }
     },
     "url": {
-      pattern: RegExp("\\burl\\((?:" + string2.source + "|" + /(?:[^\\\r\n()"']|\\[\s\S])*/.source + ")\\)", "i"),
+      pattern: RegExp("\\burl\\((?:" + string.source + "|" + /(?:[^\\\r\n()"']|\\[\s\S])*/.source + ")\\)", "i"),
       greedy: true,
       inside: {
         "function": /^url/i,
         "punctuation": /^\(|\)$/,
         "string": {
-          pattern: RegExp("^" + string2.source + "$"),
+          pattern: RegExp("^" + string.source + "$"),
           alias: "url"
         }
       }
     },
     "selector": {
-      pattern: RegExp(`(^|[{}\\s])[^{}\\s](?:[^{};"'\\s]|\\s+(?![\\s{])|` + string2.source + ")*(?=\\s*\\{)"),
+      pattern: RegExp(`(^|[{}\\s])[^{}\\s](?:[^{};"'\\s]|\\s+(?![\\s{])|` + string.source + ")*(?=\\s*\\{)"),
       lookbehind: true
     },
     "string": {
-      pattern: string2,
+      pattern: string,
       greedy: true
     },
     "property": {
