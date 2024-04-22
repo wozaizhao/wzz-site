@@ -37,7 +37,7 @@
                 <t-icon name="browse" size="16px" />
                 {{ item.watch }}
               </span>
-              <t-tooltip :content="item.comment" placement="bottom">
+              <t-tooltip :content="item.comment" theme="light" placement="bottom">
                 <span class="source-detail-time truncate">
                 <!-- <t-icon name="history" size="16px" /> -->
                 {{ item.comment }}
