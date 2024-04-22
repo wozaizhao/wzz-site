@@ -5,61 +5,19 @@
   </td-doc-layout>
 </template>
 
-<script>
-export default {
-  computed: {
-    headerStyle () {
-      const { name } = this.$route
-      const fixedHeaderList = ['home', 'home-en', 'source', 'source-en', 'trade']
-      if (fixedHeaderList.includes(name)) {
-        return {
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100%',
-          zIndex: 1200,
-          '--bg-color-secondarypage': 'var(--bg-color-navigation)',
-          '--bg-color-secondarypage-hover': 'var(--bg-color-navigation-hover)',
-          '--bg-color-secondarypage-select': 'var(--bg-color-navigation-select)'
-        }
-      }
-      return { display: 'none' }
-    }
-  },
+<script setup lang="ts">
+import { RouterView } from "vue-router";
 
-  mounted () {
-    window.addEventListener('load', this.handleHashScroll)
-  },
-
-  beforeDestroy () {
-    window.removeEventListener('load', this.handleHashScroll)
-  },
-
-  watch: {
-    $route: {
-      immediate: true,
-      handler (route) {
-        if (route.meta) {
-          document.title = route.meta.documentTitle || 'TDesign'
-        }
-      }
-    }
-  },
-
-  methods: {
-    handleHashScroll () {
-      const { $route } = this
-      const hash = decodeURIComponent($route.hash)
-      requestAnimationFrame(() => {
-        const id = hash.slice(1)
-        const anchorEl = document.getElementById(id)
-        if (!anchorEl) return
-
-        requestAnimationFrame(() => {
-          window.scrollTo({ top: anchorEl.offsetTop - 88 })
-        })
-      })
-    }
-  }
-}
+const headerStyle = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  width: "100%",
+  zIndex: 1200,
+  "--bg-color-secondarypage": "var(--bg-color-navigation)",
+  "--bg-color-secondarypage-hover": "var(--bg-color-navigation-hover)",
+  "--bg-color-secondarypage-select": "var(--bg-color-navigation-select)",
+};
 </script>
+
+<style scoped></style>
