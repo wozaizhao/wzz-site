@@ -4,6 +4,7 @@
       <div class="tdesign-source-header">
         <div class="content">
           <h1>Design Resources</h1>
+          <p class="fixed right-0 top-20">{{ isVisible }}</p>
           <div class="description">
             <p>
               Here are the download links for TDesign-related design resources
@@ -26,6 +27,7 @@
       </div>
 
       <resources :data="data" />
+      <more ref="moreRef" :status="status" />
       <td-doc-footer :style="footerStyle" />
     </div>
   </div>
@@ -38,9 +40,11 @@ export default {
 </script>
 
 <script lang="ts" setup>
-import { onMounted, ref } from 'vue';
-import resources from './components/resources.vue';
-import { getResources } from '@/api/resource';
+import { onMounted, ref, watch } from "vue";
+import { useElementVisibility } from "@vueuse/core";
+import resources from "./components/resources.vue";
+import more from "@/components/more.vue";
+import { getResources } from "@/api/resource";
 const footerStyle = {
   "--content-padding-right": "0",
   "--content-max-width": "1440px",
@@ -51,11 +55,53 @@ const footerStyle = {
 
 const data = ref([]);
 
+const moreRef = ref(null);
+const isVisible = useElementVisibility(moreRef);
+const status = ref("");
+
+const pagination = ref({
+  pageSize: 12,
+  total: 0,
+  current: 1,
+});
+
+watch(() => isVisible.value, (value) => {
+  if (status.value === 'finish') {
+    return;
+  }
+  if (value) {
+    pagination.value.current = pagination.value.current + 1;
+    fetchData();
+  }
+});
+
+const fetchData = async () => {
+  status.value = "loading";
+  try {
+    const { list, total } = await getResources({
+      page: pagination.value.current,
+      pageSize: pagination.value.pageSize,
+    });
+    if (list.length === 0) {
+      status.value = "finish";
+    } else {
+      data.value = data.value.concat(list);
+      pagination.value = {
+        ...pagination.value,
+        total,
+      };
+      status.value = "loaded";
+    }
+  } catch (e) {
+    console.log(e);
+  } finally {
+    
+  }
+};
+
 onMounted(() => {
-  getResources().then(res => {
-    data.value = res.list;
-  });
-})
+  fetchData();
+});
 </script>
 
 <style lang="less" scoped>
@@ -88,6 +134,5 @@ onMounted(() => {
       }
     }
   }
-
 }
 </style>
