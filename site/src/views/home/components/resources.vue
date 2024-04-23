@@ -5,7 +5,10 @@
     </div>
 
     <div class="tdesign-source-content-box">
-      <ul class="tdesign-source-content__list">
+      <div v-if="data.length === 0" class="text-center">
+        <t-loading class="py-48" />
+      </div>
+      <ul v-else class="tdesign-source-content__list">
         <li
           class="tdesign-source-content__list-item"
           :class="{ disabled: item.status === -1 }"
@@ -22,7 +25,7 @@
             <span class="source-tag todo" v-else-if="item.status === -1"
               >In Progress</span
             > -->
-            <img :src="`https://cos.wozaizhao.com/${item.logo}`" class="source-icon max-h-8 max-w-16" />
+            <img v-if="item.logo" :src="`https://cos.wozaizhao.com/${item.logo}`" class="source-icon max-h-8 max-w-16" />
             <h3 class="source-title capitalize">
               {{ item.title }}
               <t-icon
@@ -49,9 +52,9 @@
       </ul>
     </div>
 
-    <div class="tdesign-source-content-box">
+    <!-- <div class="tdesign-source-content-box">
       <h2 class="tdesign-source-content__title">Contributors</h2>
-      <!-- <a class="contributor-link" href="" target="_blank">怎样参与 TDesign 设计资源开源共建？</a> -->
+      <a class="contributor-link" href="" target="_blank">怎样参与 TDesign 设计资源开源共建？</a>
       <div class="contributor-list">
         <a
           class="contributor-avatar"
@@ -68,7 +71,7 @@
           </t-tooltip>
         </a>
       </div>
-    </div>
+    </div> -->
   </div>
 </template>
 
@@ -79,8 +82,6 @@ export default {
 </script>
 
 <script lang="ts" setup>
-import { webSourceList, webDesignContributor } from "../../../consts";
-
 const props = defineProps({
   data: {
     type: Array,
@@ -130,6 +131,7 @@ const handleSourceClick = () => {};
     list-style: none;
     padding: 0;
     margin-top: 24px;
+    // min-height: 500px;
 
     @media screen and (max-width: 1200px) {
       --item-width: calc((100% - 24px * 2) / 3);
