@@ -5,14 +5,14 @@ export const getLocale = () => {
   const locale = {
     zh: {
       footer: {
-        copyright: '腾讯公司 版权所有',
+        copyright: '我在找 版权所有',
         weComGroup: '企业微信群',
         weComGroupDesc: '欢迎微信扫码联系我们',
       },
     },
     en: {
       footer: {
-        copyright: 'Tencent Copyright',
+        copyright: 'Wozaizhao Copyright',
         weComGroup: 'WeCom Group',
         weComGroupDesc: 'Welcome to contact us',
       },

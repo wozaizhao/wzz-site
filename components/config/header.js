@@ -12,30 +12,30 @@ const headerList = [
     type: 'main',
     target: '_self',
   },
-  {
-    name: '基础组件',
-    // path: '/vue/',
-    type: 'base',
-    target: '_self',
-  },
+  // {
+  //   name: '基础组件',
+  //   // path: '/vue/',
+  //   type: 'base',
+  //   target: '_self',
+  // },
   {
     name: '行业组件',
     path: '/trade',
     type: 'main',
     target: '_self',
   },
-  {
-    name: '页面模板',
-    path: 'https://tdesign.tencent.com/starter/',
-    type: 'main',
-    target: '_self',
-  },
-  {
-    name: '资源',
-    path: jumpLocation('/source'),
-    type: 'main',
-    target: '_self',
-  },
+  // {
+  //   name: '页面模板',
+  //   path: 'https://tdesign.tencent.com/starter/',
+  //   type: 'main',
+  //   target: '_self',
+  // },
+  // {
+  //   name: '资源',
+  //   path: jumpLocation('/source'),
+  //   type: 'main',
+  //   target: '_self',
+  // },
   {
     name: '关于',
     path: jumpLocation('/about'),
@@ -98,11 +98,11 @@ export const getHeaderConfig = () => {
   const isEnglish = lang === 'en';
 
   const headerList = [
-    { name: isEnglish ? 'Design' : '设计', path: jumpLocation('/design'), type: 'main', target: '_self' },
-    { name: isEnglish ? 'Components' : '基础组件', path: jumpLocation('/vue/overview'), type: 'base', target: '_self' },
+    // { name: isEnglish ? 'Design' : '设计', path: jumpLocation('/design'), type: 'main', target: '_self' },
+    // { name: isEnglish ? 'Components' : '基础组件', path: jumpLocation('/vue/overview'), type: 'base', target: '_self' },
     intranet ? { name: isEnglish ? 'Industry component' : '行业组件', path: '/trade', type: 'main', target: '_self' } : null,
-    { name: isEnglish ? 'Templates' : '页面模板', path: 'https://tdesign.tencent.com/starter/', type: 'main', target: '_self' },
-    { name: isEnglish ? 'Resources' : '资源', path: jumpLocation('/source'), type: 'main', target: '_self' },
+    // { name: isEnglish ? 'Templates' : '页面模板', path: 'https://tdesign.tencent.com/starter/', type: 'main', target: '_self' },
+    // { name: isEnglish ? 'Resources' : '资源', path: jumpLocation('/source'), type: 'main', target: '_self' },
     { name: isEnglish ? 'About' : '关于', path: jumpLocation('/about/introduce'), type: 'main', target: '_self' },
   ].filter(item => item);
 

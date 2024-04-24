@@ -1,4 +1,4 @@
-# TDesign 官网 webcomponents 组件
+# Wozaizhao 官网 webcomponents 组件
 
 ## 开发
 
@@ -22,8 +22,8 @@ npm build
 
 ```javascript
 // 引入 es 代码和通用样式
-import 'tdesign-site-components';
-import 'tdesign-site-components/lib/styles/style.css';
+import 'wzz-site-components';
+import 'wzz-site-components/lib/styles/style.css';
 
 // 将 webcomponents 组件拼接成页面
 <td-doc-layout>

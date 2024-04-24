@@ -73,13 +73,6 @@ export default define({
 
     <div class="TDesign-header-logo">
       <a class="home" href="/" title="TDesign" innerHTML=${logoIcon}></a>
-      <span class="divider"></span>
-      <td-doc-popup portalStyle="${portalStyle}" placement="bottom-start">
-        <div class="TDesign-header-logo__menu" innerHTML=${menuApplicationIcon}></div>
-        <div slot="content" class="TDesign-header-logo__content">
-          ${renderMenu(menuList)}
-        </div>
-      </td-doc-popup>
     </div>
   `,
 });

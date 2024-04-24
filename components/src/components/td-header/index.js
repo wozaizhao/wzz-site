@@ -165,31 +165,32 @@ function renderLinksPopup(host, trigger) {
 }
 
 export function gitPath(platform, framework) {
-  const isStarter = /starter/.test(location.pathname);
-  if (isStarter) {
-    const [, starterFramework] =
-      location.pathname.match(/starter\/docs\/([\w-]+)/) || [];
-    if (!starterFramework)
-      return "https://github.com/Tencent/?q=tdesign+starter";
-    return `https://github.com/Tencent/tdesign-${starterFramework}-starter`;
-  }
+  return "https://github.com/wozaizhao"
+  // const isStarter = /starter/.test(location.pathname);
+  // if (isStarter) {
+  //   const [, starterFramework] =
+  //     location.pathname.match(/starter\/docs\/([\w-]+)/) || [];
+  //   if (!starterFramework)
+  //     return "https://github.com/Tencent/?q=tdesign+starter";
+  //   return `https://github.com/Tencent/tdesign-${starterFramework}-starter`;
+  // }
 
-  if (framework === "site") {
-    return isIntranet()
-      ? "https://git.woa.com/groups/TDesign/-/projects/list"
-      : "https://github.com/Tencent/tdesign";
-  } else if (platform === "mobile") {
-    return isIntranet()
-      ? `https://git.woa.com/Tdesign/Tdesign-${platform}-${framework}`
-      : `https://github.com/Tencent/tdesign-${platform}-${framework}`;
-  } else if (framework === "flutter") {
-    // 等待 flutter 仓库迁移到 Tencent Group 下后可以删除
-    return 'https://github.com/TDesignOteam/tdesign-flutter';
-  } else {
-    return isIntranet()
-      ? `https://git.woa.com/Tdesign/Tdesign-${platform}-${framework}`
-      : `https://github.com/Tencent/tdesign-${framework}`;
-  }
+  // if (framework === "site") {
+  //   return isIntranet()
+  //     ? "https://git.woa.com/groups/TDesign/-/projects/list"
+  //     : "https://github.com/Tencent/tdesign";
+  // } else if (platform === "mobile") {
+  //   return isIntranet()
+  //     ? `https://git.woa.com/Tdesign/Tdesign-${platform}-${framework}`
+  //     : `https://github.com/Tencent/tdesign-${platform}-${framework}`;
+  // } else if (framework === "flutter") {
+  //   // 等待 flutter 仓库迁移到 Tencent Group 下后可以删除
+  //   return 'https://github.com/TDesignOteam/tdesign-flutter';
+  // } else {
+  //   return isIntranet()
+  //     ? `https://git.woa.com/Tdesign/Tdesign-${platform}-${framework}`
+  //     : `https://github.com/Tencent/tdesign-${framework}`;
+  // }
 }
 
 function renderLinks(host, headerList, platform, framework) {
@@ -259,7 +260,7 @@ export default define({
   platform: "web",
   framework: "vue",
   disabledTheme: false,
-  enabledLocale: true,
+  enabledLocale: false,
   notice: {
     get: (_host, lastValue) => lastValue || {},
     set: (_host, value) => value,

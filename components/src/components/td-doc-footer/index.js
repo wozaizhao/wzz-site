@@ -26,11 +26,6 @@ export default define({
       <div class="TDesign-doc-footer" style="${mobileBodyStyle}">
         <div class="TDesign-doc-footer__inner">
           <div class="TDesign-doc-footer__content">
-            <div class="TDesign-doc-footer__qrcode">
-              <i innerHTML="${qrcodeIcon}"></i>
-              <h4 class="TDesign-doc-footer__qrcode-title">${locale.footer.weComGroup}</h4>
-              <p class="TDesign-doc-footer__qrcode-desc">${locale.footer.weComGroupDesc}</p>
-            </div>
 
             ${footerLinks.map((item) => html`
               <div class="TDesign-doc-footer__content-block">
@@ -47,11 +42,7 @@ export default define({
       </div>
       <div class="TDesign-doc-footer__bottom" style="${mobileBodyStyle}">
         <div class="TDesign-doc-footer__inner">
-          <p class="copyright">Copyright &copy; 1998 - 2023 Tencent. All Rights Reserved. ${locale.footer.copyright}</p>
-          <div class="TDesign-doc-footer__logos">
-            <i class="logo" innerHTML="${committeeIcon}"></i>
-            <a class="logo" href="https://cloud.tencent.com/" target="_blank" innerHTML="${tencentCloudIcon}"></a>
-          </div>
+          <p class="copyright">Copyright &copy; 2014 - 2024 Wozaizhao. All Rights Reserved. ${locale.footer.copyright}</p>
         </div>
       </div>
     `.css`${style}`
