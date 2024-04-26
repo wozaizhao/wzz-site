@@ -1,6 +1,6 @@
 {
   "name": "wzz-site-components",
-  "version": "0.1.0",
+  "version": "0.1.9",
   "main": "lib/site.es.js",
   "scripts": {
     "dev": "vite",

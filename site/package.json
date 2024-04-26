@@ -20,7 +20,7 @@
     "tdesign-vue-next": "^1.9.3",
     "vue": "^3.4.21",
     "vue-router": "^4.3.0",
-    "wzz-site-components": "^0.1.2"
+    "wzz-site-components": "^0.1.9"
   },
   "devDependencies": {
     "@tsconfig/node20": "^20.1.2",

@@ -23,26 +23,10 @@ export default define({
     const mobileBodyStyle = { ...host.mobileBodyStyle };
 
     return html`
-      <div class="TDesign-doc-footer" style="${mobileBodyStyle}">
-        <div class="TDesign-doc-footer__inner">
-          <div class="TDesign-doc-footer__content">
-
-            ${footerLinks.map((item) => html`
-              <div class="TDesign-doc-footer__content-block">
-                <p class="title">${item.title}</p>
-                ${item.links.map(link => html`
-                  <a class="link" href="${link.url}" target="${link.target}">
-                    <span>${link.name}</span>
-                  </a>
-                `)}
-              </div>
-            `)}
-          </div>
-        </div>
-      </div>
       <div class="TDesign-doc-footer__bottom" style="${mobileBodyStyle}">
         <div class="TDesign-doc-footer__inner">
-          <p class="copyright">Copyright &copy; 2014 - 2024 Wozaizhao. All Rights Reserved. ${locale.footer.copyright}</p>
+          <p class="copyright">Copyright &copy; 2014 - 2024 Wozaizhao. All Rights Reserved. ${locale.footer.copyright} <a href="https://beian.miit.gov.cn/">沪ICP备16038613号-1</a>
+          </p>
         </div>
       </div>
     `.css`${style}`

@@ -1,30 +1,18 @@
 <template>
   <div class="home-page page">
     <div class="tdesign-document tdesign-source-page">
-      <div class="tdesign-source-header">
+      <!-- <div class="tdesign-source-header">
         <div class="content">
           <h1>Design Resources</h1>
-          <p class="fixed right-0 top-20">{{ isVisible }}</p>
           <div class="description">
             <p>
               Here are the download links for TDesign-related design resources
               and design tools. More design resources are being sorted out and
               perfected.
             </p>
-            <p>
-              If you have any suggestions or feedback, please send an email to
-              tdesign@tencent.com or submit an
-              <a
-                href="https://github.com/Tencent/tdesign/issues"
-                target="_blank"
-                >issue</a
-              >
-            </p>
           </div>
-
-          <!-- <td-doc-tabs ref="tabs" :tab="tab"></td-doc-tabs> -->
         </div>
-      </div>
+      </div> -->
 
       <resources :data="data" />
       <more ref="moreRef" :status="status" />

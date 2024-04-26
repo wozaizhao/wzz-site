@@ -265,12 +265,12 @@ export default define({
     get: (_host, lastValue) => lastValue || {},
     set: (_host, value) => value,
     connect: (host, key) => {
-      fetch(import.meta.env.VITE_SITE_NOTICE_URL)
-        .then((res) => res.json())
-        .then((res) => {
-          host.notice = res;
-        })
-        .catch(console.error);
+      // fetch(import.meta.env.VITE_SITE_NOTICE_URL)
+      //   .then((res) => res.json())
+      //   .then((res) => {
+      //     host.notice = res;
+      //   })
+      //   .catch(console.error);
     },
   },
   npmVersions: {
@@ -278,16 +278,16 @@ export default define({
     set: (_host, value) => value,
     connect: (host, key) => {
       allComponentsNpmUrl.forEach((item) => {
-        fetch(`https://mirrors.tencent.com/npm/${item}`)
-          .then((res) => res.json())
-          .then((res) => {
-            const latestVersion = res?.["dist-tags"]?.["latest"];
-            host.npmVersions = {
-              ...host.npmVersions,
-              [item]: latestVersion,
-            };
-          })
-          .catch(console.error);
+        // fetch(`https://mirrors.tencent.com/npm/${item}`)
+        //   .then((res) => res.json())
+        //   .then((res) => {
+        //     const latestVersion = res?.["dist-tags"]?.["latest"];
+        //     host.npmVersions = {
+        //       ...host.npmVersions,
+        //       [item]: latestVersion,
+        //     };
+        //   })
+        //   .catch(console.error);
       });
     },
   },

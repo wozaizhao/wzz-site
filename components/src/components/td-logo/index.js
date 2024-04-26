@@ -52,20 +52,20 @@ export default define({
     set: (value) => value,
     connect: (host) => {
       const menuCdn = isIntranet() ? logoMenuConfigWoaCdn : logoMenuConfigCdn;
-      fetch(menuCdn).then(res => res.json()).then(menuList => {
-        // 整理 menu 字段
-        menuList.forEach(menu => {
-          menu.target = '_blank';
-          menu.children.forEach(child => {
-            if (child.url.includes('tdesign')) {
-              child.target = '_self';
-            } else {
-              child.target = '_blank';
-            }
-          });
-        });
-        Object.assign(host, { menuList });
-      });
+      // fetch(menuCdn).then(res => res.json()).then(menuList => {
+      //   // 整理 menu 字段
+      //   menuList.forEach(menu => {
+      //     menu.target = '_blank';
+      //     menu.children.forEach(child => {
+      //       if (child.url.includes('tdesign')) {
+      //         child.target = '_self';
+      //       } else {
+      //         child.target = '_blank';
+      //       }
+      //     });
+      //   });
+      //   Object.assign(host, { menuList });
+      // });
     },
   },
   render: ({ menuList }) => html`

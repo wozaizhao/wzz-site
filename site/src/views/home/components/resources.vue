@@ -1,7 +1,7 @@
 <template>
   <div class="tdesign-source-content">
     <div class="tdesign-source-content-box">
-      <h2 class="tdesign-source-content__title">Resource Preview</h2>
+      <h2 class="tdesign-source-content__title">所有资源</h2>
     </div>
 
     <div class="tdesign-source-content-box">
@@ -29,7 +29,7 @@
             <h3 class="source-title capitalize">
               {{ item.title }}
               <t-icon
-                class="source-title-action"
+                class="source-title-action float-right"
                 color="#777"
                 name="jump"
                 size="16px"
@@ -103,7 +103,9 @@ const masks = {
   8: 'i'
 }
 
-const handleSourceClick = () => {};
+const handleSourceClick = (item) => {
+  window.open(item.url)
+};
 </script>
 
 <style lang="less">
